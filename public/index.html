@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ábaco — Registro de inversiones</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 34 34" fill="none">
+      <rect x="1" y="1" width="32" height="32" rx="7" stroke="var(--accent)" stroke-width="1.5"/>
+      <path d="M7 24 L13 15 L18 19 L27 8" stroke="var(--accent)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="27" cy="8" r="2" fill="var(--accent)"/>
+    </svg>
+    <div>
+      <h1>Ábaco</h1>
+      <small>Registro de inversiones · autoalojado</small>
+    </div>
+  </div>
+
+  <nav class="tabs toplevel">
+    <button data-toplevel="dashboard" class="active">Dashboard</button>
+    <button data-toplevel="cartera">Cartera</button>
+    <button data-toplevel="household">Economía</button>
+  </nav>
+
+  <!-- Solo visible en móvil (ver @media max-width:640px en styles.css) -- abre
+       #mobile-menu-panel, un flyout-panel MÁS (fuera de <header>, junto a los otros -- ver el
+       porqué en el comentario de mobile-menu-panel más abajo: si viviera dentro de <header>
+       (position:sticky + z-index propio + el filter:blur que ya aplica ahí durante
+       body.modal-open), el propio panel se auto-desenfocaría y quedaría atrapado detrás de
+       #modal-backdrop en el z-index, en vez de encima. */-->
+  <button type="button" class="icon-btn mobile-menu-toggle" id="mobile-menu-toggle" title="Más acciones" aria-label="Más acciones">☰</button>
+
+  <div class="header-actions">
+    <button class="btn" id="btn-theme-toggle" title="Alterna entre modo claro y oscuro (se recuerda en este navegador)">🌙 Modo oscuro</button>
+    <button class="btn" id="btn-privacy-toggle" title="Oculta los importes en pantalla (no afecta a backups ni exportaciones CSV)">🙈 Ocultar cifras</button>
+    <button class="btn" id="btn-export">Backup JSON</button>
+    <label class="btn" for="import-json-file">Restaurar</label>
+    <input type="file" id="import-json-file" accept="application/json">
+  </div>
+</header>
+
+<main>
+
+  <nav class="tabs subtabs" id="nav-cartera-sub" style="display:none">
+    <button data-subtab="cartera-resumen" class="active">Resumen</button>
+    <button data-subtab="positions">Posiciones</button>
+    <button data-subtab="operations">Operaciones</button>
+    <button data-subtab="valuations">Histórico</button>
+  </nav>
+
+  <nav class="tabs subtabs" id="nav-household-sub" style="display:none">
+    <button data-subtab="household" class="active">Resumen</button>
+    <button data-subtab="household-operations">Operaciones</button>
+    <button data-subtab="household-analysis">Análisis</button>
+  </nav>
+
+  <div class="privacy-note">
+    <b>Tus datos viven en tu propio servidor.</b> Esta app corre en tu contenedor Docker y guarda todo en un fichero SQLite en el volumen que hayas montado. Nada sale hacia terceros. Usa "Backup JSON" de vez en cuando para tener una copia adicional.
+  </div>
+
+  <!-- DASHBOARD -->
+  <section id="tab-dashboard" class="active">
+    <div class="kpi-row">
+      <button type="button" class="kpi-box" id="kpi-patrimonio" title="Ir a Cartera">
+        <div class="kpi-label">Patrimonio total</div>
+        <div class="kpi-value money" id="heroValue">—</div>
+        <div class="kpi-sub" id="heroDelta">—</div>
+      </button>
+      <button type="button" class="kpi-box" id="kpi-ingresos" title="Ir a Economía">
+        <div class="kpi-label" id="kpi-ingresos-label">Ingresos</div>
+        <div class="kpi-value money pos" id="kpi-ingresos-value">—</div>
+      </button>
+      <button type="button" class="kpi-box" id="kpi-gastos" title="Ir a Economía">
+        <div class="kpi-label" id="kpi-gastos-label">Gastos</div>
+        <div class="kpi-value money neg" id="kpi-gastos-value">—</div>
+      </button>
+      <div class="kpi-box kpi-box-static" id="kpi-ahorro">
+        <div class="kpi-label" id="kpi-ahorro-label">Ahorro</div>
+        <div class="kpi-value money" id="kpi-ahorro-value">—</div>
+        <div class="kpi-sub" id="kpi-ahorro-sub"></div>
+      </div>
+    </div>
+
+    <div class="panel panel-warnings" id="dashboard-warnings" style="display:none">
+      <ul id="dashboard-warnings-list"></ul>
+    </div>
+
+    <div class="panel panel-compact">
+      <p class="panel-title">Evolución del patrimonio</p>
+      <div class="chart-wrap" id="chart-equity"></div>
+      <div class="chart-legend">
+        <span><i class="swatch" style="background:var(--accent)"></i>Valor indexado (base 100)</span>
+      </div>
+    </div>
+
+    <div class="chip-row" id="chip-row"></div>
+
+    <div class="panel">
+      <div class="positions-head">
+        <p class="panel-title" style="margin:0">Mejores posiciones</p>
+        <select id="top-positions-sort" class="top-positions-sort-select">
+          <option value="pnlPct">Ordenar por rentabilidad</option>
+          <option value="weightPct">Ordenar por peso en cartera</option>
+        </select>
+      </div>
+      <ul class="top-positions-list" id="top-positions-list"></ul>
+    </div>
+
+    <div class="panel">
+      <p class="panel-title">Economía — resumen del mes</p>
+      <p class="hint">Ingresos/Gastos/Ahorro del mes seleccionado en la pestaña Economía, ya con tu parte real aplicada. Detalle completo (por cuenta, evolución mensual...) en esa pestaña.</p>
+      <div class="chip-row" id="dashboard-household-chip-row"></div>
+    </div>
+  </section>
+
+  <!-- CARTERA > RESUMEN (extracto de lo anterior, dentro de la sub-navegación de Cartera) -->
+  <section id="tab-cartera-resumen">
+    <div class="hero-panel">
+      <div class="hero-main">
+        <div class="hero-eyebrow">Patrimonio total</div>
+        <div class="hero-value money" id="carteraHeroValue">—</div>
+        <div class="hero-rule"></div>
+        <div class="hero-delta" id="carteraHeroDelta">—</div>
+      </div>
+      <div class="hero-spark" id="carteraHeroSpark"></div>
+    </div>
+
+    <div class="panel panel-compact">
+      <div class="positions-head">
+        <p class="panel-title">Evolución del patrimonio</p>
+        <button class="btn btn-primary" id="btn-refresh-all-cartera">↻ Actualizar precios e histórico</button>
+      </div>
+      <div id="refresh-all-cartera-status" class="hint" style="display:none"></div>
+      <div class="range-toggle" id="cartera-equity-range">
+        <button type="button" data-range="ytd">YTD</button>
+        <button type="button" data-range="6m">6 meses</button>
+        <button type="button" data-range="1y">1 año</button>
+        <button type="button" data-range="5y">5 años</button>
+        <button type="button" data-range="all" class="active">Todo</button>
+      </div>
+      <div class="chart-wrap" id="chart-cartera-equity"></div>
+      <div class="chart-legend">
+        <span><i class="swatch" style="background:var(--accent)"></i>Valor indexado (base 100)</span>
+      </div>
+    </div>
+
+    <div class="panel panel-viz-trio">
+      <p class="panel-title">Rentabilidad por bróker</p>
+      <p class="hint">
+        La misma curva de arriba, calculada por separado para cada bróker — útil para comparar
+        cada porcentaje con lo que reporta la web del propio bróker y comprobar que el cálculo
+        está bien hecho. Si un bróker separa la cartera en sub-cuentas (p.ej. Trade Republic:
+        Cuenta de Valores, Private Markets, Renta Fija, Wallet Cripto), asígnalas en el campo
+        "Sub-cuenta" de Posiciones y aquí aparecerá también el desglose por sub-cuenta debajo del
+        total.
+      </p>
+      <div class="broker-equity-grid" id="broker-equity-grid"></div>
+      <div id="broker-equity-empty"></div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel panel-viz-trio">
+        <p class="panel-title">Asignación por tipo de activo</p>
+        <div id="donut-cartera-type"></div>
+      </div>
+      <div class="panel panel-viz-trio">
+        <p class="panel-title">Asignación por bróker</p>
+        <div id="donut-cartera-broker"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <p class="panel-title">Distribución por activo (incluye efectivo)</p>
+      <div id="donut-cartera-asset" class="donut-row"></div>
+    </div>
+
+    <div class="panel">
+      <p class="panel-title" style="margin:0">Posiciones</p>
+      <p class="hint">Versión esquemática — la tabla completa (bróker, cantidad, coste medio, fuente de precio...) está en la pestaña Posiciones.</p>
+      <div class="table-wrap">
+        <table class="fixed-cols-table table-zebra">
+          <colgroup>
+            <col>
+            <col style="width:110px">
+            <col style="width:70px">
+            <col style="width:130px">
+            <col style="width:150px">
+          </colgroup>
+          <thead><tr><th>Activo</th><th class="right">Valor</th><th class="right">% Peso</th><th class="right">Rentabilidad</th><th class="right">Rentabilidad €</th></tr></thead>
+          <tbody id="cartera-resumen-positions-body"></tbody>
+        </table>
+      </div>
+      <div id="cartera-resumen-positions-empty"></div>
+    </div>
+  </section>
+
+  <!-- POSITIONS (derivadas de las operaciones) -->
+  <section id="tab-positions">
+    <div class="panel">
+      <p class="panel-title" style="margin:0">Efectivo por bróker</p>
+      <p class="hint">
+        Es la suma con signo de la columna "Importe total" de todas tus operaciones (compras y
+        retiradas restan porque su importe llega negativo, ventas/ingresos/dividendos suman
+        porque llega positivo) — no un saldo que reporte el bróker. Revisa en la vista previa
+        de importación que ninguna fila con movimiento de caja se quede sin importe, y que todas
+        tus operaciones estén importadas, para que coincida con la realidad.
+      </p>
+      <div class="table-wrap">
+        <table class="table-zebra">
+          <thead><tr><th>Bróker</th><th class="right">Efectivo</th></tr></thead>
+          <tbody id="cash-body"></tbody>
+        </table>
+      </div>
+      <div id="cash-empty"></div>
+    </div>
+
+    <div class="panel panel-table-breakout">
+      <div class="positions-head">
+        <p class="panel-title" style="margin:0">Posiciones abiertas (calculadas a partir de tus operaciones)</p>
+        <button class="btn btn-primary" id="btn-refresh-prices">↻ Actualizar precios</button>
+      </div>
+      <p class="hint">
+        El precio actual lo editas tú, o le asignas Yahoo Finance como fuente automática por fila (acciones, ETF, índices y cripto) y pulsas "Actualizar precios". Solo se consulta fuera para las filas con fuente asignada — el resto sigue siendo 100% manual y local.
+      </p>
+      <div id="refresh-status" class="hint" style="display:none;margin-top:-10px"></div>
+      <div class="positions-sort-mobile">
+        <label for="positions-sort-select">Ordenar por</label>
+        <select id="positions-sort-select">
+          <option value="value:desc">Valor (mayor a menor)</option>
+          <option value="value:asc">Valor (menor a mayor)</option>
+          <option value="name:asc">Activo (A-Z)</option>
+          <option value="name:desc">Activo (Z-A)</option>
+          <option value="broker:asc">Bróker (A-Z)</option>
+          <option value="broker:desc">Bróker (Z-A)</option>
+          <option value="type:asc">Tipo (A-Z)</option>
+          <option value="type:desc">Tipo (Z-A)</option>
+          <option value="qty:desc">Cantidad (mayor a menor)</option>
+          <option value="qty:asc">Cantidad (menor a mayor)</option>
+          <option value="avgPrice:desc">Coste medio (mayor a menor)</option>
+          <option value="avgPrice:asc">Coste medio (menor a mayor)</option>
+          <option value="currentPrice:desc">Precio actual (mayor a menor)</option>
+          <option value="currentPrice:asc">Precio actual (menor a mayor)</option>
+          <option value="weightPct:desc">% Peso (mayor a menor)</option>
+          <option value="weightPct:asc">% Peso (menor a mayor)</option>
+          <option value="pnlPct:desc">Rent. % (mayor a menor)</option>
+          <option value="pnlPct:asc">Rent. % (menor a mayor)</option>
+          <option value="pnlAbs:desc">Rent. € (mayor a menor)</option>
+          <option value="pnlAbs:asc">Rent. € (menor a mayor)</option>
+        </select>
+      </div>
+      <div class="table-wrap table-cards">
+        <table class="table-zebra table-sticky-col">
+          <thead>
+            <tr>
+              <th class="sortable" data-sort-key="name">Activo<span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort-key="type">Tipo / Sub-cuenta<span class="sort-indicator"></span></th>
+              <th class="right sortable" data-sort-key="qty">Cantidad / Coste medio<span class="sort-indicator"></span></th>
+              <th class="right sortable" data-sort-key="currentPrice">Precio actual<span class="sort-indicator"></span></th>
+              <th>Fuente</th><th>Símbolo</th>
+              <th class="right sortable" data-sort-key="value">Valor / % Peso<span class="sort-indicator"></span></th>
+              <th class="right sortable" data-sort-key="pnlPct">Rentabilidad<span class="sort-indicator"></span></th>
+            </tr>
+          </thead>
+          <tbody id="positions-body"></tbody>
+        </table>
+        <datalist id="sub-account-options"></datalist>
+      </div>
+      <div id="positions-empty"></div>
+    </div>
+  </section>
+
+  <!-- OPERATIONS -->
+  <section id="tab-operations">
+    <!-- Importador de CSV como menú flotante -- mismo criterio que Economía > Operaciones
+         (household-import-toggle/-panel): Resumen es solo consulta, Operaciones es donde se
+         modifican datos, así que el alta por CSV vive aquí y no como subpestaña propia. -->
+    <div class="flyout-bar">
+      <div class="flyout" id="cartera-import-flyout">
+        <button type="button" class="btn" id="cartera-import-toggle">⇪ Importar CSV ▾</button>
+      </div>
+    </div>
+
+    <div class="panel panel-table-breakout">
+      <div class="positions-head">
+        <p class="panel-title" style="margin:0">Histórico de operaciones</p>
+        <button class="btn" id="btn-export-operations-csv">Exportar CSV</button>
+      </div>
+      <p class="hint">
+        Incluye una columna "Efectivo (fila)" con el impacto en caja que calcula la app para
+        cada operación (importe menos comisión), para que puedas comparar fila a fila con tu
+        CSV del bróker en Excel/LibreOffice.
+      </p>
+      <div class="import-step">
+        <div class="field">
+          <label>Filtrar por bróker</label>
+          <select id="operations-broker-filter">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Filtrar por tipo</label>
+          <select id="operations-type-filter">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Buscar por ticker o activo</label>
+          <input type="text" id="operations-text-filter" placeholder="Ej. SPCE, Virgin Galactic...">
+        </div>
+        <div class="field">
+          <label>Mes</label>
+          <div class="month-picker" id="operations-month-picker">
+            <button type="button" class="month-picker-toggle" id="operations-month-picker-toggle"></button>
+          </div>
+        </div>
+        <div class="field"><label>Desde</label><input type="date" id="operations-date-from"></div>
+        <div class="field"><label>Hasta</label><input type="date" id="operations-date-to"></div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <button class="btn btn-danger" id="operations-btn-delete-filtered" type="button" style="margin-top:8px;">
+            Eliminar filtradas (<span id="operations-filtered-count">0</span>)
+          </button>
+        </div>
+      </div>
+      <p class="hint">
+        Los filtros de arriba se combinan entre sí y afectan también a "Eliminar filtradas" —
+        útil para deshacer de golpe una importación de CSV mal hecha (filtra por el bróker de
+        esa importación) sin tocar el resto del histórico.
+      </p>
+      <div class="positions-sort-mobile">
+        <label for="operations-sort-select">Ordenar por</label>
+        <select id="operations-sort-select">
+          <option value="date:desc">Fecha (más reciente)</option>
+          <option value="date:asc">Fecha (más antigua)</option>
+          <option value="broker:asc">Bróker (A-Z)</option>
+          <option value="broker:desc">Bróker (Z-A)</option>
+          <option value="type:asc">Tipo (A-Z)</option>
+          <option value="type:desc">Tipo (Z-A)</option>
+          <option value="name:asc">Activo (A-Z)</option>
+          <option value="name:desc">Activo (Z-A)</option>
+          <option value="ticker:asc">Ticker (A-Z)</option>
+          <option value="ticker:desc">Ticker (Z-A)</option>
+          <option value="quantity:desc">Cantidad (mayor a menor)</option>
+          <option value="quantity:asc">Cantidad (menor a mayor)</option>
+          <option value="price:desc">Precio (mayor a menor)</option>
+          <option value="price:asc">Precio (menor a mayor)</option>
+          <option value="fee:desc">Comisión (mayor a menor)</option>
+          <option value="fee:asc">Comisión (menor a mayor)</option>
+          <option value="amount:desc">Importe (mayor a menor)</option>
+          <option value="amount:asc">Importe (menor a mayor)</option>
+        </select>
+      </div>
+      <div class="table-wrap table-cards">
+        <table class="table-zebra table-sticky-col">
+          <thead>
+            <tr>
+              <th class="sortable" data-sort-key="date">Fecha<span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort-key="broker">Bróker<span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort-key="type">Tipo<span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort-key="name">Activo<span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort-key="ticker">Ticker<span class="sort-indicator"></span></th>
+              <th class="right sortable" data-sort-key="quantity">Cantidad<span class="sort-indicator"></span></th>
+              <th class="right sortable" data-sort-key="price">Precio<span class="sort-indicator"></span></th>
+              <th class="right sortable" data-sort-key="fee">Comisión<span class="sort-indicator"></span></th>
+              <th class="right sortable" data-sort-key="amount">Importe<span class="sort-indicator"></span></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="operations-body"></tbody>
+        </table>
+      </div>
+      <div id="operations-empty"></div>
+      <div class="csv-preview-pagination" id="operations-pagination"></div>
+
+      <form class="entry-form" id="form-operation">
+        <div class="field"><label>Bróker</label><input name="broker" placeholder="Trade Republic" required></div>
+        <div class="field"><label>Fecha</label><input name="date" type="date" required></div>
+        <div class="field">
+          <label>Tipo</label>
+          <select name="type">
+            <option value="compra">Compra</option>
+            <option value="venta">Venta</option>
+            <option value="dividendo">Dividendo</option>
+            <option value="comision">Comisión</option>
+            <option value="ingreso">Ingreso</option>
+            <option value="retirada">Retirada</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div class="field"><label>Activo</label><input name="name" placeholder="Ej. MSCI World / BTC"></div>
+        <div class="field"><label>Ticker / ISIN</label><input name="ticker" placeholder="Opcional"></div>
+        <div class="field">
+          <label>Tipo de activo</label>
+          <select name="asset_type">
+            <option>Acción</option><option>ETF</option><option>Cripto</option><option>Fondo</option><option>Otro</option>
+          </select>
+        </div>
+        <div class="field"><label>Cantidad</label><input name="quantity" type="number" step="any" min="0"></div>
+        <div class="field"><label>Precio (€)</label><input name="price" type="number" step="any" min="0"></div>
+        <div class="field"><label>Comisión (€)</label><input name="fee" type="number" step="any" value="0"></div>
+        <div class="field"><label>Importe total (€)</label><input name="amount" type="number" step="any" placeholder="Auto si se deja vacío"></div>
+        <div class="form-submit"><button class="btn btn-primary" type="submit">Añadir operación</button></div>
+      </form>
+    </div>
+  </section>
+
+  <!-- VALUATIONS -->
+  <section id="tab-valuations">
+    <div class="panel">
+      <div class="positions-head">
+        <p class="panel-title" style="margin:0">Rentabilidad automática (desde tus operaciones y precios históricos)</p>
+        <button class="btn btn-primary" id="btn-refresh-history">↻ Calcular / actualizar histórico</button>
+      </div>
+      <p class="hint">
+        Reconstruye el valor de la cartera día a día usando el histórico de precios de Yahoo Finance de cada posición con fuente asignada (pestaña Posiciones → columna "Fuente") — no hace falta que registres nada a mano. En cada compra o venta se usa el precio real de esa operación, así que una posición ya vendida conserva su rentabilidad realizada (precio de compra vs. precio de venta) en la curva para siempre, aunque hoy ya no la tengas. Los activos sin fuente asignada no entran en el cálculo: se piden abajo en vez de inventar un valor.
+      </p>
+      <div id="auto-equity-status" class="hint" style="display:none;margin-top:-10px"></div>
+      <div id="auto-equity-missing"></div>
+      <div class="chip-row" id="auto-equity-chips"></div>
+      <div class="chart-wrap" id="chart-auto-equity"></div>
+      <div class="chart-legend">
+        <span><i class="swatch" style="background:var(--accent)"></i>Valor indexado (base 100)</span>
+        <span><i class="swatch" style="background:var(--negative)"></i>Drawdown desde máximo</span>
+      </div>
+      <div id="auto-equity-closed" style="margin-top:16px"></div>
+    </div>
+
+    <div class="panel">
+      <p class="panel-title">Histórico de valoraciones manuales (opcional)</p>
+      <p class="hint">
+        Alternativa a la curva automática de arriba: registra tú mismo periódicamente (ej. cada mes) el valor total de tu cartera. Útil si prefieres no asignar fuentes de precio, o como referencia cruzada. Si ese día metiste o sacaste dinero, indícalo en "Aportación / retirada" para que no distorsione la rentabilidad.
+      </p>
+      <div class="table-wrap table-cards">
+        <table class="table-zebra">
+          <thead><tr><th>Fecha</th><th class="right">Valor total (€)</th><th class="right">Aportación / retirada (€)</th><th></th></tr></thead>
+          <tbody id="valuations-body"></tbody>
+        </table>
+      </div>
+      <div id="valuations-empty"></div>
+      <form class="entry-form" id="form-valuation">
+        <div class="field"><label>Fecha</label><input name="date" type="date" required></div>
+        <div class="field"><label>Valor total (€)</label><input name="value" type="number" step="any" min="0" required></div>
+        <div class="field"><label>Aportación / retirada (€)</label><input name="cashflow" type="number" step="any" value="0"></div>
+        <div class="form-submit"><button class="btn btn-primary" type="submit">Añadir valoración</button></div>
+      </form>
+    </div>
+  </section>
+
+  <!-- HOUSEHOLD (economía doméstica, independiente de Cartera) -->
+  <section id="tab-household">
+    <div class="panel">
+      <div class="positions-head">
+        <p class="panel-title" style="margin:0">Resumen mensual</p>
+        <div class="month-picker" id="household-month-picker">
+          <button type="button" class="month-picker-toggle" id="household-month-picker-toggle"></button>
+        </div>
+      </div>
+      <p class="hint">
+        Ingresos y gastos del día a día (nómina, alquiler, supermercado, suscripciones...) —
+        no confundir con "Ingreso/Retirada" de Cartera, que son movimientos de caja dentro de
+        un bróker. Esta sección es completamente independiente de Cartera. Los importes de
+        abajo son tu <b>parte real</b> tras aplicar el % de reparto de cada cuenta (gestiona
+        las cuentas desde "⚙ Cuentas", en la pestaña Operaciones) — el importe total registrado
+        se indica aparte.
+      </p>
+      <div class="chip-row" id="household-chip-row"></div>
+
+      <p class="panel-title" style="margin:20px 0 10px 0">Por cuenta</p>
+      <div class="table-wrap">
+        <table class="table-zebra">
+          <thead>
+            <tr>
+              <th>Cuenta</th><th class="right">%</th>
+              <th class="right">Ingresos</th><th class="right">Gastos</th>
+              <th class="right">Mi parte ingresos</th><th class="right">Mi parte gastos</th>
+              <th class="right">Aportación de tercero</th>
+            </tr>
+          </thead>
+          <tbody id="household-by-account-body"></tbody>
+        </table>
+      </div>
+      <div id="household-by-account-empty"></div>
+    </div>
+
+    <div class="panel">
+      <p class="panel-title" style="margin:0">Gasto por categoría</p>
+      <p class="hint">Mismo mes que "Resumen mensual", arriba. Categorías ordenadas de mayor a menor gasto.</p>
+      <div id="household-category-bars"></div>
+    </div>
+
+    <div class="panel">
+      <div class="positions-head">
+        <p class="panel-title" style="margin:0">Evolución mes a mes</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div class="field" style="margin:0;min-width:160px">
+            <select id="household-evolution-period">
+              <option value="all">Todo el histórico</option>
+              <option value="12">Último año</option>
+              <option value="6">Últimos 6 meses</option>
+              <option value="3">Últimos 3 meses</option>
+            </select>
+          </div>
+          <div class="field" style="margin:0;min-width:170px">
+            <select id="household-evolution-scale">
+              <option value="linear">Escala lineal</option>
+              <option value="log">Escala logarítmica</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <p class="hint">Escala logarítmica por defecto: un mes puntual (una reforma, un viaje grande...) no aplasta a los demás contra el eje. Cambia el rango con el primer desplegable — el mes en curso no cuenta en los rangos "últimos N meses", normalmente aparece incompleto.</p>
+      <div class="chart-wrap" id="chart-household"></div>
+      <div class="chart-legend">
+        <span><i class="swatch" style="background:var(--accent)"></i>Ingresos</span>
+        <span><i class="swatch" style="background:var(--negative)"></i>Gastos</span>
+      </div>
+      <div class="table-wrap scroll-box-5" style="margin-top:18px">
+        <table class="table-zebra">
+          <thead><tr><th>Mes</th><th class="right">Ingresos</th><th class="right">Gastos</th><th class="right">Ahorro</th></tr></thead>
+          <tbody id="household-monthly-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- HOUSEHOLD OPERATIONS (tabla única de movimientos -- filtros + orden + edición inline +
+       acciones en bloque + alta -- ver renderHouseholdRecat en app.js. Antes eran dos tablas
+       separadas (Movimientos del mes en Resumen, Todas las operaciones aquí) que leían del
+       mismo array HOUSEHOLD con plantillas de fila distintas; se unificaron en una sola. Los
+       ids household-recat-*/form-household-recat/household-btn-delete-* se conservan tal cual
+       -- es una reubicación, no una reescritura del wiring en app.js.) -->
+  <section id="tab-household-operations">
+    <!-- Importador de CSV y gestión de Cuentas como menús flotantes -- se usan poco (una vez
+         por extracto bancario / de vez en cuando para ajustar el %) frente a Resumen, que se
+         consulta constantemente, así que no merecen sitio fijo. Viven en Operaciones (no en
+         Resumen) porque Resumen es solo consulta -- todo lo que modifica datos vive aquí. -->
+    <div class="flyout-bar">
+      <div class="flyout" id="household-accounts-flyout">
+        <button type="button" class="btn" id="household-accounts-toggle">⚙ Cuentas ▾</button>
+      </div>
+      <div class="flyout" id="household-rules-flyout">
+        <button type="button" class="btn" id="household-rules-toggle">🏷 Reglas ▾</button>
+      </div>
+      <div class="flyout" id="household-transfers-flyout">
+        <button type="button" class="btn" id="household-transfers-toggle">🔗 Detectar traspasos ▾</button>
+      </div>
+      <div class="flyout" id="household-import-flyout">
+        <button type="button" class="btn" id="household-import-toggle">⇪ Importar CSV ▾</button>
+      </div>
+    </div>
+
+    <div class="panel panel-table-breakout">
+      <div class="positions-head">
+        <p class="panel-title" style="margin:0">Movimientos</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-danger" id="household-btn-delete-filtered" type="button">Eliminar filtrados</button>
+          <button class="btn btn-danger" id="household-btn-delete-all" type="button">🗑 Eliminar todos los movimientos</button>
+        </div>
+      </div>
+      <p class="hint">
+        Incluye todo el histórico, agrupado por mes (o un único mes si filtras por uno). Los
+        filtros se combinan entre sí (mes, categoría, subcategoría, cuenta, rango de importe,
+        tipo y descripción). Útil tanto para el día a día (filtra por el mes en curso) como para
+        corregir clasificaciones erróneas del propio banco al importar (p.ej. ING categorizando
+        un recibo del IBI como "Educación"). Edita una fila suelta directamente en la tabla, o
+        aplica una corrección (o un borrado) a todas las filas MARCADAS de golpe — todas
+        empiezan marcadas al filtrar; desmarca las excepciones sueltas (p.ej. un ingreso real
+        entre varios traspasos) antes de aplicar el cambio. Las marcadas como recurrentes
+        ofrecen un botón para repetirlas el mes que viene con un clic — nada se genera
+        automáticamente. "Eliminar todos los movimientos" borra Economía doméstica entera; no
+        afecta a Cartera.
+      </p>
+
+      <p class="panel-subtitle">Filtros</p>
+      <div class="import-step filter-row-aligned">
+        <div class="field">
+          <label>Mes</label>
+          <div class="month-picker" id="household-ops-month-picker">
+            <button type="button" class="month-picker-toggle" id="household-ops-month-picker-toggle"></button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Categoría</label>
+          <select id="household-recat-category-filter">
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Subcategoría</label>
+          <select id="household-recat-subcategory-filter">
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Cuenta</label>
+          <select id="household-recat-account-filter">
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Importe mínimo</label>
+          <input type="number" min="0" step="any" id="household-recat-amount-min" placeholder="0">
+        </div>
+        <div class="field">
+          <label>Importe máximo</label>
+          <input type="number" min="0" step="any" id="household-recat-amount-max" placeholder="Sin máximo">
+        </div>
+        <div class="field">
+          <label>Tipo</label>
+          <select id="household-recat-type-filter">
+            <option value="">Todos</option>
+            <option value="ingreso">Ingreso</option>
+            <option value="gasto">Gasto</option>
+            <option value="transferencia">Transferencia interna</option>
+            <option value="aportacion_tercero">Aportación de tercero</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Buscar en descripción</label>
+          <input type="text" id="household-recat-text-filter" placeholder="Ej. IBI, Yescapa...">
+        </div>
+      </div>
+
+      <form class="entry-form" id="form-household-recat" style="margin-top:12px;padding-top:12px;">
+        <div class="field">
+          <label>Nueva categoría</label>
+          <input type="text" id="household-recat-category" list="household-category-suggestions" placeholder="Dejar vacío para no cambiar">
+        </div>
+        <div class="field">
+          <label>Nueva subcategoría</label>
+          <input type="text" id="household-recat-subcategory" list="household-subcategory-suggestions" placeholder="Dejar vacío para no cambiar">
+        </div>
+        <div class="field">
+          <label>Nueva cuenta</label>
+          <select id="household-recat-account">
+            <option value="__nochange__">Dejar sin cambiar</option>
+            <option value="">Sin cuenta</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Nuevo tipo</label>
+          <select id="household-recat-type">
+            <option value="__nochange__">Dejar sin cambiar</option>
+            <option value="ingreso">Ingreso</option>
+            <option value="gasto">Gasto</option>
+            <option value="transferencia">Transferencia interna</option>
+            <option value="aportacion_tercero">Aportación de tercero</option>
+          </select>
+        </div>
+        <div class="form-submit">
+          <button class="btn btn-primary" type="submit">Aplicar a los marcados (<span id="household-recat-count">0</span>)</button>
+        </div>
+      </form>
+
+      <div class="table-wrap table-cards section-divider-strong" style="margin-top:18px">
+        <table class="table-zebra table-sticky-col-2">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="household-recat-select-all" title="Marcar/desmarcar todo lo filtrado"></th>
+              <th class="sortable" data-sort-key="date">Fecha<span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort-key="type">Tipo<span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort-key="account">Cuenta<span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort-key="category">Categoría<span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort-key="subcategory">Subcategoría<span class="sort-indicator"></span></th>
+              <th class="right sortable" data-sort-key="amount">Importe<span class="sort-indicator"></span></th>
+              <th class="right">Mi parte</th>
+              <th>Descripción</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="household-recat-body"></tbody>
+        </table>
+      </div>
+      <div id="household-recat-empty"></div>
+      <div class="csv-preview-pagination" id="household-recat-pagination"></div>
+
+      <form class="entry-form" id="form-household">
+        <div class="field">
+          <label>Tipo</label>
+          <select name="type" id="household-form-type">
+            <option value="gasto">Gasto</option>
+            <option value="ingreso">Ingreso</option>
+            <option value="transferencia">Transferencia interna</option>
+            <option value="aportacion_tercero">Aportación de tercero</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Cuenta</label>
+          <select name="account_id" id="household-form-account">
+            <option value="">Sin cuenta</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Categoría</label>
+          <input name="category" id="household-form-category" list="household-category-suggestions" placeholder="Ej. Alquiler" required>
+          <datalist id="household-category-suggestions"></datalist>
+        </div>
+        <div class="field">
+          <label>Subcategoría</label>
+          <input name="subcategory" list="household-subcategory-suggestions" placeholder="Opcional">
+          <datalist id="household-subcategory-suggestions"></datalist>
+        </div>
+        <div class="field"><label>Importe (€)</label><input name="amount" type="number" step="any" min="0" required></div>
+        <div class="field"><label>Fecha</label><input name="date" type="date" required></div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <label style="display:flex;align-items:center;gap:6px;padding-top:8px;font-size:13px;text-transform:none;letter-spacing:normal;color:var(--text-primary)">
+            <input type="checkbox" name="recurring" style="width:auto"> Recurrente (mensual)
+          </label>
+        </div>
+        <div class="field"><label>Notas</label><input name="notes" placeholder="Opcional"></div>
+        <div class="form-submit"><button class="btn btn-primary" type="submit">Añadir movimiento</button></div>
+      </form>
+    </div>
+  </section>
+
+  <!-- HOUSEHOLD ANALYSIS (gráficos para analizar gastos por categoría y por mes) -->
+  <section id="tab-household-analysis">
+    <div class="panel">
+      <p class="panel-title" style="margin:0">Periodo</p>
+      <p class="hint">Afecta al desglose por categoría de abajo — la evolución mensual tiene su propio selector de rango más abajo.</p>
+      <div class="field" style="max-width:260px">
+        <select id="household-analysis-period">
+          <option value="all">Todo el histórico</option>
+          <option value="12">Últimos 12 meses</option>
+          <option value="6">Últimos 6 meses</option>
+          <option value="3">Últimos 3 meses</option>
+          <option value="current">Mes actual</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <p class="panel-title">Gastos por categoría</p>
+        <div id="donut-household-category" class="donut-row"></div>
+      </div>
+      <div class="panel">
+        <p class="panel-title">Ranking de categorías</p>
+        <p class="hint">Mismo periodo que el desglose de la izquierda.</p>
+        <ul class="donut-legend" id="household-category-ranking"></ul>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="positions-head">
+        <p class="panel-title" style="margin:0">Evolución de gastos por mes</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div class="field" style="margin:0;min-width:160px">
+            <select id="household-analysis-evolution-period">
+              <option value="all">Todo el histórico</option>
+              <option value="12">Último año</option>
+              <option value="6">Últimos 6 meses</option>
+              <option value="3">Últimos 3 meses</option>
+            </select>
+          </div>
+          <div class="field" style="margin:0;min-width:170px">
+            <select id="household-analysis-scale">
+              <option value="linear">Escala lineal</option>
+              <option value="log">Escala logarítmica</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <p class="hint">Solo gastos (sin ingresos), para ver mejor la tendencia. El mes en curso no cuenta en los rangos "últimos N meses" — normalmente aparece incompleto.</p>
+      <div class="chart-wrap" id="chart-household-analysis"></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Paneles del selector de mes año->mes (ver renderMonthPicker en app.js) -- lo usan Economía
+     (Resumen y Operaciones) y Cartera > Operaciones (filtro de mes). Viven fuera de <section> a
+     propósito, igual que los flyout-panel de abajo: son
+     position:fixed posicionados por JS con coordenadas de viewport, y section.active anima con
+     un transform (@keyframes fade) al cambiar de pestaña -- mientras esa animación está en
+     marcha, un transform activo en un ancestro convierte a ESE ancestro en el containing block
+     de cualquier descendiente position:fixed, y las coordenadas calculadas por JS (pensadas para
+     el viewport real) saldrían descolocadas. Fuera de <section> no tienen ese ancestro animado
+     por medio. -->
+<div class="month-picker-panel" id="household-month-picker-panel"></div>
+<div class="month-picker-panel" id="household-ops-month-picker-panel"></div>
+<div class="month-picker-panel" id="operations-month-picker-panel"></div>
+
+<div id="modal-backdrop"></div>
+  <div class="panel flyout-panel" id="cartera-import-panel">
+    <div class="positions-head">
+      <p class="panel-title" style="margin:0">Importar operaciones desde un CSV del bróker</p>
+      <button type="button" class="icon-btn" data-close-modal title="Cerrar">✕︎</button>
+    </div>
+    <p class="hint">
+      Interactive Brokers: genera un <b>Flex Query</b> (Informes → Flex Queries → tipo "Trade Confirmation" o "Activity"), formato CSV, con encabezados de columna incluidos.<br>
+      Trade Republic no ofrece un CSV oficial de operaciones — solo extractos en PDF, o extensiones de comunidad tipo "TR Exporter" que exportan la tabla de movimientos a CSV desde tu propio navegador (sin enviar datos a ningún servidor). Cualquiera de esos ficheros sirve aquí: el mapeo de columnas de abajo se adapta a lo que traiga tu CSV.
+    </p>
+
+    <div class="import-step">
+      <div class="field">
+        <label>1. Selecciona el fichero CSV</label>
+        <div class="file-picker-row">
+          <label class="btn" for="csv-file">Elegir archivo CSV</label>
+          <span class="file-picker-name" id="csv-file-name">Ningún archivo seleccionado</span>
+          <input type="file" id="csv-file" accept=".csv,text/csv">
+        </div>
+      </div>
+      <div class="field"><label>Bróker de esta importación</label><input type="text" id="csv-broker" placeholder="Ej. Interactive Brokers"></div>
+    </div>
+
+    <div class="privacy-note" id="csv-broker-detected" style="display:none; margin-top:10px;">
+      <b>Formato de Trade Republic detectado.</b> He preasociado las columnas y voy a clasificar el tipo de cada operación automáticamente a partir de <span class="mono">type</span>/<span class="mono">category</span>. Esa clasificación es una aproximación por palabras clave (Trade Republic no publica la lista completa de valores posibles) — revisa la columna "Tipo" en la vista previa antes de confirmar, sobre todo si ves filas como "Otro".
+    </div>
+
+    <div class="import-step" id="csv-format-row" style="display:none;">
+      <div class="field">
+        <label>Delimitador detectado</label>
+        <select id="csv-delimiter"><option value=",">Coma (,)</option><option value=";">Punto y coma (;)</option></select>
+      </div>
+      <div class="field">
+        <label>Separador decimal</label>
+        <select id="csv-decimal"><option value=".">Punto (1234.56)</option><option value=",">Coma (1234,56)</option></select>
+      </div>
+    </div>
+
+    <div id="csv-mapping" style="display:none;">
+      <p class="panel-title" style="margin-top:20px;">2. Asocia las columnas de tu CSV con cada campo</p>
+      <div class="mapping-grid" id="mapping-grid"></div>
+      <button class="btn btn-primary" id="btn-preview-csv" style="margin-top:16px;">Generar vista previa</button>
+    </div>
+
+    <div id="csv-preview-wrap" style="display:none;">
+      <p class="panel-title" style="margin-top:24px;">3. Revisa y confirma</p>
+      <p class="hint" id="csv-preview-count"></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th><th>Fecha</th><th>Tipo</th><th>Activo</th><th>Ticker</th>
+              <th class="right">Cantidad</th><th class="right">Precio</th><th class="right">Comisión</th><th class="right">Importe</th>
+            </tr>
+          </thead>
+          <tbody id="csv-preview-body"></tbody>
+        </table>
+      </div>
+      <div class="csv-preview-pagination" id="csv-preview-pagination"></div>
+      <button class="btn btn-primary" id="btn-confirm-import" style="margin-top:16px;">Confirmar importación</button>
+    </div>
+  </div>
+  <div class="panel flyout-panel" id="household-accounts-panel">
+    <div class="positions-head">
+      <p class="panel-title" style="margin:0">Cuentas</p>
+      <button type="button" class="icon-btn" data-close-modal title="Cerrar">✕︎</button>
+    </div>
+    <p class="hint">
+      Nombre + % de reparto (qué parte de cada movimiento de esa cuenta es realmente
+      tuyo — p.ej. 50% en una cuenta a medias con alguien que no usa esta app). "Tercero"
+      es opcional: el nombre de esa otra persona, para etiquetar automáticamente sus
+      movimientos de tipo "Aportación de tercero" en esta cuenta. "Ingresos" marcado
+      (por defecto) hace que los movimientos de tipo Ingreso de esta cuenta cuenten como
+      ingreso real; desmárcalo en cuentas que solo reciben traspasos desde otra (p.ej.
+      Domiciliaciones/Conjunta que reciben dinero de Nómina) — el importador CSV
+      preseleccionará "Transferencia interna" para sus abonos, siempre editable antes de
+      confirmar. Borrar una cuenta no borra sus movimientos, los deja como "Sin cuenta"
+      (100%).
+    </p>
+    <div id="household-accounts-list"></div>
+    <form id="form-household-account" style="display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);align-items:end;flex-wrap:wrap;">
+      <div class="field" style="flex:1;min-width:100px;margin:0"><label>Nombre</label><input type="text" name="name" placeholder="Ej. Ahorro" required></div>
+      <div class="field" style="flex:1;min-width:100px;margin:0"><label>Tercero</label><input type="text" name="third_party_name" placeholder="Opcional"></div>
+      <div class="field" style="width:70px;flex:none;margin:0"><label>%</label><input type="number" name="split_pct" min="0" max="100" step="any" value="100" required></div>
+      <div class="field" style="flex:none;margin:0">
+        <label style="display:flex;align-items:center;gap:6px;padding-top:8px;font-size:13px;text-transform:none;letter-spacing:normal;color:var(--text-primary)">
+          <input type="checkbox" name="income_source" style="width:auto" checked> Genera ingresos reales
+        </label>
+      </div>
+      <button class="btn btn-primary" type="submit">Añadir</button>
+    </form>
+  </div>
+  <div class="panel flyout-panel" id="household-rules-panel">
+    <div class="positions-head">
+      <p class="panel-title" style="margin:0">Reglas de categorización</p>
+      <button type="button" class="icon-btn" data-close-modal title="Cerrar">✕︎</button>
+    </div>
+    <p class="hint">
+      Si la descripción (notas) de una operación cumple la condición de abajo (sin distinguir
+      mayúsculas ni acentos), se preselecciona la categoría/subcategoría indicada — al importar
+      un CSV nuevo (en su vista previa, siempre editable antes de confirmar) o, si lo aceptas
+      abajo, sobre operaciones ya guardadas que coincidan. Puedes escribir varias palabras
+      separadas por comas (p.ej. "Mercadona, Carrefour, Lidl") para que cualquiera de ellas
+      cuente igual. "No contiene" es distinto a las demás: es un respaldo genérico que solo
+      se usa cuando ninguna otra regla (de cualquier otro tipo) encaja ya en esa operación,
+      nunca compite por especificidad con ellas. Entre el resto de reglas, si dos coinciden a la
+      vez en la misma operación gana la palabra más larga (más específica); un empate exacto se
+      marca para que lo decidas tú en la vista previa.
+    </p>
+    <div id="household-rules-list"></div>
+    <p class="panel-subtitle">Añadir regla nueva</p>
+    <form class="entry-form" id="form-household-rule" style="margin-top:0;padding-top:0;border-top:none;">
+      <div class="field"><label>Palabra(s)</label><input type="text" name="keyword" placeholder="Ej. Mercadona, Carrefour" required></div>
+      <div class="field">
+        <label>Coincidencia</label>
+        <select name="match_type" title="Elige cómo debe comparar la(s) palabra(s) con la descripción.">
+          <option value="contains">Contiene el texto</option>
+          <option value="not_contains">No contiene el texto</option>
+          <option value="word">Solo palabra exacta</option>
+          <option value="starts_with">Empieza por</option>
+          <option value="ends_with">Termina por</option>
+        </select>
+      </div>
+      <div class="field"><label>Categoría</label><input type="text" name="category" list="household-category-suggestions" required></div>
+      <div class="field"><label>Subcategoría</label><input type="text" name="subcategory" list="household-subcategory-suggestions" placeholder="Opcional"></div>
+      <div class="form-submit"><button class="btn btn-primary" type="submit">Guardar regla</button></div>
+    </form>
+    <div id="household-rules-retro" style="display:none;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+      <p class="panel-title" style="margin:0 0 8px 0">Aplicar también a operaciones ya guardadas</p>
+      <p class="hint" id="household-rules-retro-count"></p>
+      <div class="table-wrap scroll-box-5">
+        <table class="table-zebra">
+          <thead><tr><th><input type="checkbox" id="household-rules-retro-select-all" title="Marcar/desmarcar todas"></th><th>Fecha</th><th>Descripción</th><th>Categoría actual → nueva</th></tr></thead>
+          <tbody id="household-rules-retro-body"></tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-primary" type="button" id="household-rules-retro-apply">Aplicar a las marcadas (<span id="household-rules-retro-selcount">0</span>)</button>
+        <button class="btn" type="button" id="household-rules-retro-dismiss">Ahora no</button>
+      </div>
+    </div>
+  </div>
+  <div class="panel flyout-panel" id="household-transfers-panel">
+    <div class="positions-head">
+      <p class="panel-title" style="margin:0">Traspasos con Cartera</p>
+      <button type="button" class="icon-btn" data-close-modal title="Cerrar">✕︎</button>
+    </div>
+    <p class="hint">
+      Busca movimientos de Economía que coincidan exactamente en fecha e importe con una
+      operación de Cartera, en las dos direcciones: un gasto que en realidad es dinero movido
+      AL bróker para invertir (coincide con un ingreso de Cartera), o un ingreso que en
+      realidad es una retirada DEL bróker de vuelta a tus cuentas del día a día (coincide con
+      una retirada de Cartera) — sin reclasificar, este segundo caso infla Ingresos/Ahorro como
+      si fuera dinero nuevo cuando en realidad ya era tuyo. No se toca nada en Cartera; solo
+      cambia el tipo del lado de Economía a "Transferencia interna" en las filas que confirmes.
+    </p>
+    <div class="table-wrap">
+      <table class="table-zebra">
+        <thead>
+          <tr><th></th><th>Fecha</th><th class="right">Importe</th><th>Categoría (Economía)</th><th>Dirección</th><th>Bróker (Cartera)</th></tr>
+        </thead>
+        <tbody id="household-transfers-body"></tbody>
+      </table>
+    </div>
+    <div id="household-transfers-empty"></div>
+    <button class="btn btn-primary" id="btn-confirm-transfers" style="margin-top:14px;">Convertir seleccionados en traspasos (<span id="household-transfers-count">0</span>)</button>
+  </div>
+  <div class="panel flyout-panel" id="household-import-panel">
+    <div class="positions-head">
+      <p class="panel-title" style="margin:0">Importar movimientos desde un CSV del banco</p>
+      <button type="button" class="icon-btn" data-close-modal title="Cerrar">✕︎</button>
+    </div>
+    <p class="hint">
+      ING: exporta desde Movimientos → Exportar (icono de descarga sobre el listado de una
+      cuenta). Se detecta el formato de ING automáticamente y se preasocian las columnas —
+      el tipo (ingreso/gasto) se deduce del signo del importe. Revisa siempre la vista previa
+      antes de confirmar. Para otros bancos, el importador funciona en modo genérico:
+      mapeas tú mismo qué columna es cada campo.
+    </p>
+
+    <div class="import-step">
+      <div class="field">
+        <label>1. Selecciona el fichero CSV</label>
+        <div class="file-picker-row">
+          <label class="btn" for="household-csv-file">Elegir archivo CSV</label>
+          <span class="file-picker-name" id="household-csv-file-name">Ningún archivo seleccionado</span>
+          <input type="file" id="household-csv-file" accept=".csv,text/csv">
+        </div>
+      </div>
+      <div class="field">
+        <label>Cuenta de esta importación</label>
+        <select id="household-csv-account"><option value="">Sin cuenta</option></select>
+      </div>
+    </div>
+
+    <div class="privacy-note" id="household-csv-bank-detected" style="display:none; margin-top:10px;">
+      <b>Formato de ING detectado.</b> He preasociado las columnas a partir de la cabecera
+      (Categoría/Subcategoría/Descripción/Importe/Saldo) y el separador decimal (coma). El
+      tipo se deduce del signo del importe — revisa la columna "Tipo" en la vista previa
+      antes de confirmar.
+    </div>
+
+    <div class="import-step" id="household-csv-format-row" style="display:none;">
+      <div class="field">
+        <label>Delimitador detectado</label>
+        <select id="household-csv-delimiter"><option value=",">Coma (,)</option><option value=";">Punto y coma (;)</option></select>
+      </div>
+      <div class="field">
+        <label>Separador decimal</label>
+        <select id="household-csv-decimal"><option value=".">Punto (1234.56)</option><option value=",">Coma (1234,56)</option></select>
+      </div>
+    </div>
+
+    <div id="household-csv-mapping" style="display:none;">
+      <p class="panel-title" style="margin-top:20px;">2. Asocia las columnas de tu CSV con cada campo</p>
+      <div class="mapping-grid" id="household-mapping-grid"></div>
+      <button class="btn btn-primary" id="household-btn-preview-csv" style="margin-top:16px;">Generar vista previa</button>
+    </div>
+
+    <div id="household-csv-preview-wrap" style="display:none;">
+      <p class="panel-title" style="margin-top:24px;">3. Revisa y confirma</p>
+      <p class="hint" id="household-csv-preview-count"></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th></th><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Subcategoría</th><th class="right">Importe</th><th>Notas</th></tr>
+          </thead>
+          <tbody id="household-csv-preview-body"></tbody>
+        </table>
+      </div>
+      <div class="csv-preview-pagination" id="household-csv-preview-pagination"></div>
+      <button class="btn btn-primary" id="household-btn-confirm-import" style="margin-top:16px;">Confirmar importación</button>
+    </div>
+  </div>
+
+  <!-- Panel lateral de acciones secundarias en móvil (ver #mobile-menu-toggle en el header) --
+       mismo mecanismo genérico que los tres flyout-panel de arriba (wireFlyout/closeAllFlyouts
+       en app.js), pero deslizante desde la derecha en vez de modal centrado (ver
+       .drawer-panel en styles.css). Botones PROPIOS (no los mismos <button> del header
+       reutilizados) para que este panel pueda vivir fuera de <header> sin problemas de
+       stacking/filter -- llaman a las mismas funciones que los botones de escritorio
+       (toggleTheme/togglePrivacy/exportBackup en app.js) en vez de duplicar su lógica, y el de
+       Restaurar simplemente abre el mismo <input type="file" id="import-json-file"> ya
+       existente (su "change" solo está cableado una vez, en ese input real). -->
+  <div class="panel flyout-panel drawer-panel" id="mobile-menu-panel">
+    <div class="positions-head">
+      <p class="panel-title" style="margin:0">Acciones</p>
+      <button type="button" class="icon-btn" data-close-modal title="Cerrar">✕︎</button>
+    </div>
+    <button class="btn" id="btn-theme-toggle-mobile" type="button">🌙 Modo oscuro</button>
+    <button class="btn" id="btn-privacy-toggle-mobile" type="button">🙈 Ocultar cifras</button>
+    <button class="btn" id="btn-export-mobile" type="button">Backup JSON</button>
+    <button class="btn" id="btn-restore-mobile" type="button">Restaurar</button>
+  </div>
+
+<footer>Ábaco · Docker + SQLite · tus datos, tu servidor</footer>
+
+<!-- Tooltip flotante compartido por los gráficos de barras mensuales (ver wireChartTooltips en app.js) -->
+<div class="chart-tooltip" id="chart-tooltip"></div>
+
+<script src="brokerAccounting.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

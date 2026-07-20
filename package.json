@@ -1,0 +1,16 @@
+{
+  "name": "abaco",
+  "version": "1.0.0",
+  "description": "Registro de inversiones autoalojado (self-hosted portfolio tracker)",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "compression": "^1.8.1",
+    "express": "^4.19.2"
+  }
+}

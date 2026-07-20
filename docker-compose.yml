@@ -1,0 +1,19 @@
+services:
+  abaco:
+    build: .
+    container_name: abaco
+    restart: unless-stopped
+    ports:
+      - "8080:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=3000
+      - DB_PATH=/app/data/cartera.db
+      # Hora local para el cron de actualización diaria de precios (08:00, ver server.js) --
+      # sin esto el contenedor corre en UTC y el disparo real sería 1-2h más tarde en España.
+      - TZ=Europe/Madrid
+      # Descomenta estas dos líneas para exigir usuario/contraseña (recomendado
+      # si vas a exponer el puerto fuera de tu red local):
+      # - APP_USER=tuusuario
+      # - APP_PASSWORD=cambia-esto-por-una-contrasena-fuerte

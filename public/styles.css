@@ -1,0 +1,843 @@
+:root{
+  --bg-page:#F7F7F5;
+  --bg-card:#FFFFFF;
+  --text-primary:#1A1A18;
+  --text-secondary:#8A8A85;
+  --accent:#0F6B5C;
+  --accent-rgb:15,107,92;
+  --accent-contrast:#FFFFFF;
+  --negative:#B8433A;
+  --negative-rgb:184,67,58;
+  --border:#F0F0EE;
+  --radius:14px;
+  --input-bg:#F7F7F5;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg-page:#17181C;
+    --bg-card:#212226;
+    --text-primary:#F2F2F0;
+    --text-secondary:#8E8E8A;
+    --accent:#2BAA92;
+    --accent-rgb:43,170,146;
+    --accent-contrast:#0B1210;
+    --negative:#E2665A;
+    --negative-rgb:226,102,90;
+    --border:#2C2D31;
+    --input-bg:#191A1E;
+  }
+}
+:root[data-theme="dark"]{
+  --bg-page:#17181C;
+  --bg-card:#212226;
+  --text-primary:#F2F2F0;
+  --text-secondary:#8E8E8A;
+  --accent:#2BAA92;
+  --accent-rgb:43,170,146;
+  --accent-contrast:#0B1210;
+  --negative:#E2665A;
+  --negative-rgb:226,102,90;
+  --border:#2C2D31;
+  --input-bg:#191A1E;
+}
+:root[data-theme="light"]{
+  --bg-page:#F7F7F5;
+  --bg-card:#FFFFFF;
+  --text-primary:#1A1A18;
+  --text-secondary:#8A8A85;
+  --accent:#0F6B5C;
+  --accent-rgb:15,107,92;
+  --accent-contrast:#FFFFFF;
+  --negative:#B8433A;
+  --negative-rgb:184,67,58;
+  --border:#F0F0EE;
+  --input-bg:#F7F7F5;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg-page);
+  color:var(--text-primary);
+  font-family:'Inter','Segoe UI',Arial,sans-serif;
+  min-height:100vh;
+  overflow-x:hidden;
+  transition:background .15s ease, color .15s ease;
+}
+.mono{ font-family:'IBM Plex Mono','SFMono-Regular',Consolas,monospace; font-variant-numeric: tabular-nums; }
+/* Utilidad global de color pos/neg -- muchos sitios de la app (celdas de tabla, spans sueltos en
+   listas) aplican la clase "pos"/"neg" directamente sin un contenedor con su propio compuesto
+   (".kpi-value.pos", ".chip.pos"...); esos compuestos más específicos siguen ganando donde ya
+   existen, esta es solo el color de base para el resto. */
+.pos{ color:var(--accent); }
+.neg{ color:var(--negative); }
+/* Ticker entre paréntesis junto al nombre del activo en Posiciones (p.ej. "Apple (AAPL)") --
+   texto secundario apagado, inline (no bloque, va pegado al nombre en la misma línea). */
+.stat-sub{ color:var(--text-secondary); font-size:0.92em; }
+
+/* Barras de scroll a juego con el tema activo -- por defecto el navegador pinta una barra gris
+   genérica que desentona. scrollbar-color/-width cubre Firefox; los pseudo-elementos
+   ::-webkit-scrollbar cubren Chrome/Edge/Safari. */
+html{ scrollbar-width:thin; scrollbar-color:var(--border) var(--bg-page); }
+*::-webkit-scrollbar{ width:10px; height:10px; }
+*::-webkit-scrollbar-track{ background:var(--bg-page); }
+*::-webkit-scrollbar-thumb{
+  background-color:var(--border); border-radius:999px;
+  border:2px solid var(--bg-page); background-clip:padding-box;
+}
+*::-webkit-scrollbar-thumb:hover{ background-color:var(--text-secondary); }
+*::-webkit-scrollbar-corner{ background:var(--bg-page); }
+
+/* Modo privacidad: los importes se sustituyen por ***** en el propio texto (fmtMoney() en
+   app.js), no con un filtro visual -- el valor real ni siquiera llega a pintarse en el DOM
+   mientras está activo. Se activa/desactiva con el botón "Ocultar cifras" del header
+   (recordado en localStorage) y nunca afecta a backups ni exportaciones CSV, que son una
+   acción explícita del usuario, no una vista de pantalla. La clase .money solo aporta un
+   estilo sutil para que el enmascarado se lea como intencional, no como un placeholder vacío. */
+.privacy-mode .money{ letter-spacing:2px; opacity:.6; }
+/* "Precio actual" en Posiciones es la única excepción: es un <input> editable cuyo valor real
+   sigue haciendo falta en el código (para guardar la Fuente/Símbolo de la fila), así que no se
+   puede sustituir por texto plano como el resto -- se difumina en su lugar, sin tocar el valor
+   real, y se puede pasar el ratón por encima o enfocarlo para verlo/editarlo puntualmente. */
+.privacy-mode .price-input{ filter:blur(4px); transition:filter .12s ease; }
+.privacy-mode .price-input:hover, .privacy-mode .price-input:focus{ filter:blur(0); }
+
+/* ---------- Hero (patrimonio total) ---------- */
+.hero-panel{
+  display:flex; align-items:center; justify-content:space-between; gap:28px;
+  background:var(--bg-card); border-radius:var(--radius);
+  padding:30px 34px; margin-bottom:18px; position:relative; overflow:hidden;
+}
+.hero-main{ position:relative; z-index:1; }
+.hero-eyebrow{ font-size:13.5px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-secondary); margin-bottom:8px; font-weight:600; }
+.hero-value{
+  font-family:'Inter',sans-serif; font-weight:700; font-size:48px; line-height:1;
+  color:var(--text-primary); font-variant-numeric:tabular-nums;
+}
+.hero-rule{ width:44px; height:3px; background:var(--accent); border-radius:2px; margin:14px 0 10px 0; }
+.hero-delta{ font-size:15.5px; color:var(--text-secondary); }
+.hero-delta .pos{ color:var(--accent); }
+.hero-delta .neg{ color:var(--negative); }
+.hero-spark{ flex:none; width:220px; position:relative; z-index:1; }
+.hero-spark svg{ width:100%; height:auto; display:block; }
+.hero-spark-empty{ font-size:13px; color:var(--text-secondary); text-align:right; max-width:180px; line-height:1.5; }
+
+/* ---------- Cajitas KPI (Dashboard: Patrimonio/Ingresos/Gastos/Ahorro) ---------- */
+/* Sustituyen al .hero-panel grande de esta pantalla (el hero se conserva tal cual en Cartera >
+   Resumen). Tres de las cuatro son <button> que navegan a su pestaña (Patrimonio -> Cartera,
+   Ingresos/Gastos -> Economía); Ahorro es una cifra derivada sin sección propia a la que llevar,
+   así que es un <div> sin comportamiento de enlace (.kpi-box-static, ver index.html). */
+.kpi-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:18px; }
+.kpi-box{
+  -webkit-appearance:none; appearance:none; width:100%; margin:0;
+  /* Column flex explícito (no basta con display:block): los <button> sin línea de kpi-sub
+     (Ingresos/Gastos) quedan centrados verticalmente por el propio navegador, mientras que
+     Patrimonio/Ahorro (con kpi-sub) salen pegados arriba -- desalineados entre sí. */
+  display:flex; flex-direction:column; justify-content:flex-start; align-items:stretch;
+  background:var(--bg-card); border:none; border-radius:var(--radius);
+  padding:16px 20px; text-align:left; font-family:inherit; font-size:inherit; color:inherit; cursor:pointer;
+  transition:background .15s, transform .15s;
+}
+.kpi-box:not(.kpi-box-static):hover{ background:rgba(var(--accent-rgb),0.07); transform:translateY(-1px); }
+.kpi-box-static{ cursor:default; }
+.kpi-label{ font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:8px; font-weight:600; }
+.kpi-value{
+  font-family:'Inter',sans-serif; font-weight:700; font-size:28px; line-height:1.1;
+  color:var(--text-primary); font-variant-numeric:tabular-nums; display:block;
+}
+.kpi-value.pos{ color:var(--accent); }
+.kpi-value.neg{ color:var(--negative); }
+.kpi-sub{ font-size:13px; color:var(--text-secondary); margin-top:6px; }
+.kpi-sub .pos{ color:var(--accent); }
+.kpi-sub .neg{ color:var(--negative); }
+
+/* ---------- Avisos (Dashboard) ---------- */
+/* Solo se muestra si hay algo que avisar (ver renderDashboard en app.js) -- efectivo negativo
+   por bróker, curva de patrimonio sin actualizar hace más de 32 días, o rentabilidad anualizada
+   poco fiable por histórico corto. Tinte ámbar propio (ni acento ni negativo -- esto no es
+   necesariamente un problema, solo algo a tener en cuenta). */
+.panel-warnings{ background:rgba(180,140,20,0.1); border:1px solid rgba(180,140,20,0.3); border-radius:var(--radius); padding:14px 20px; margin-bottom:18px; }
+.panel-warnings ul{ list-style:none; margin:0; padding:0; }
+.panel-warnings li{ font-size:14px; color:var(--text-primary); padding:4px 0; display:flex; gap:8px; }
+.panel-warnings li::before{ content:"⚠"; color:#B8860B; flex:none; }
+
+/* ---------- Mejores posiciones (Dashboard) ---------- */
+/* Lista vertical (no tabla ancha) -- a propósito, para que quepan bien 3 posiciones sin dominar
+   la pantalla con columnas que solo hacen falta en la tabla completa de Posiciones. */
+.top-positions-list{ list-style:none; margin:0; padding:0; }
+.top-positions-list li{
+  display:flex; align-items:center; gap:14px; padding:10px 0;
+  border-bottom:1px solid var(--border);
+}
+.top-positions-list li:last-child{ border-bottom:none; }
+.top-positions-rank{
+  font-size:13px; color:var(--text-secondary); font-weight:600;
+  width:20px; flex:none; text-align:center;
+}
+.top-positions-name{ flex:1 1 auto; font-size:15px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.top-positions-stats{ flex:none; text-align:right; font-size:14px; }
+.top-positions-stats .sep{ color:var(--text-secondary); margin:0 6px; }
+.top-positions-sort-select{
+  background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:7px 9px; border-radius:8px; font-family:inherit; font-size:14.5px;
+}
+
+/* ---------- Chips secundarios ---------- */
+.chip-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:22px; }
+.chip{ background:var(--bg-card); border-radius:10px; padding:12px 15px; transition:background .15s; }
+.chip:hover{ background:rgba(var(--accent-rgb),0.06); }
+/* Chips con signo (ver cls "pos"/"neg" en chipHtml, app.js) tiñen toda la tarjeta con su color
+   semántico -- de un vistazo se distingue "va bien" de "va mal" sin leer la cifra. */
+.chip.pos{ background:rgba(var(--accent-rgb),0.08); }
+.chip.pos:hover{ background:rgba(var(--accent-rgb),0.14); }
+.chip.neg{ background:rgba(var(--negative-rgb),0.08); }
+.chip.neg:hover{ background:rgba(var(--negative-rgb),0.14); }
+.chip-label{ font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:5px; }
+.chip-value{ font-size:18px; font-weight:700; font-variant-numeric:tabular-nums; }
+.chip-sub{ font-size:13px; color:var(--text-secondary); margin-top:2px; }
+
+@media (max-width:700px){
+  .hero-panel{ flex-direction:column; align-items:flex-start; padding:24px; }
+  .hero-value{ font-size:38px; }
+  .hero-spark{ width:100%; }
+}
+
+header{
+  background:var(--bg-card);
+  border-bottom:1px solid var(--border);
+  padding:18px 28px;
+  display:flex; align-items:center; justify-content:space-between;
+  gap:16px; flex-wrap:wrap; position:sticky; top:0; z-index:20;
+}
+.brand{ display:flex; align-items:center; gap:12px; }
+.brand-mark{ width:34px; height:34px; flex:none; }
+.brand h1{ font-family:'Inter',sans-serif; font-size:22px; margin:0; font-weight:700; letter-spacing:-0.01em; }
+.brand small{ display:block; color:var(--text-secondary); font-size:13px; letter-spacing:0.03em; margin-top:2px;}
+
+nav.tabs{ display:flex; gap:4px; background:var(--bg-page); border:1px solid var(--border); border-radius:999px; padding:4px; flex-wrap:wrap; }
+/* Subpestañas de Cartera (Posiciones/Operaciones/Importar CSV/Histórico) -- viven dentro de
+   <main>, no en el header, así que necesitan su propio margen inferior antes del resto del
+   contenido (el header ya tenía su propio gap con header-actions). */
+nav.tabs.subtabs{ margin:0 0 18px 0; display:none; }
+nav.tabs button{
+  background:transparent; border:none; color:var(--text-secondary);
+  padding:8px 14px; border-radius:999px; font-size:15px; cursor:pointer;
+  font-family:inherit; transition:all .15s ease;
+}
+nav.tabs button.active{ background:var(--accent); color:var(--accent-contrast); font-weight:600; }
+nav.tabs button:hover:not(.active){ color:var(--text-primary); background:var(--border); }
+
+.header-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+.btn{
+  background:var(--bg-page); border:1px solid var(--border); color:var(--text-primary);
+  padding:8px 14px; border-radius:8px; font-size:15px; cursor:pointer; font-family:inherit;
+  transition:all .15s ease;
+}
+.btn:hover{ border-color:var(--accent); color:var(--accent); background:rgba(var(--accent-rgb),0.06); }
+.btn-primary{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); font-weight:600; }
+.btn-primary:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); opacity:0.88; }
+.btn-danger{ background:rgba(var(--negative-rgb),0.08); border-color:rgba(var(--negative-rgb),0.4); color:var(--negative); }
+.btn-danger:hover{ background:rgba(var(--negative-rgb),0.16); border-color:var(--negative); color:var(--negative); }
+input[type=file]{ display:none; }
+
+/* Tope de ancho para que un dashboard denso en datos no se estire sin límite en pantallas
+   grandes -- clamp() en el padding lateral deja además un margen razonable a los lados en vez
+   de pegar el contenido al borde, mayor cuanto más ancho el viewport (hasta llegar al tope). */
+main{ max-width:1240px; width:100%; box-sizing:border-box; margin:0 auto; padding:28px clamp(20px, 3vw, 64px); }
+section{ display:none; }
+section.active{ display:block; animation:fade .25s ease; }
+
+@keyframes fade{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
+
+.panel{ background:var(--bg-card); border-radius:var(--radius); padding:22px; margin-bottom:24px; position:relative; overflow:hidden; }
+/* "Breakout" de panel para las 3 tablas anchas de la app (Posiciones, Operaciones de Cartera,
+   Operaciones de Economía) -- se salen del ancho de lectura general (main, max-width:1240px)
+   para aprovechar prácticamente todo el ancho de pantalla en vez de quedarse con scroll lateral
+   incómodo, mientras el resto del contenido (tarjetas, texto, formularios) se queda en 1240px.
+   Técnica estándar de breakout dentro de un layout centrado: margin-left:50% + translateX(-50%)
+   recentra el panel respecto al VIEWPORT en vez de respecto a su contenedor (main, que lo
+   limitaría a 1240px), así puede ser más ancho que su padre sin desplazar el resto del layout
+   ni provocar scroll horizontal de página (body ya tiene overflow-x:hidden como red de
+   seguridad). El margen lateral es el mismo clamp(20px,3vw,64px) que ya usa el padding de main
+   -- no pegado al borde del viewport, que recortaría el border-radius de la tarjeta de forma
+   rara. calc(100vw - 2*clamp(...)) se autolimita solo: en viewports <=1240px da el mismo ancho
+   que main ya tiene ahí (no hace nada extra), y solo crece por encima de eso -- no hace falta
+   ninguna media query para "desactivarlo" en tablet/móvil. */
+.panel-table-breakout{
+  width:calc(100vw - 2 * clamp(20px, 3vw, 64px));
+  max-width:calc(100vw - 2 * clamp(20px, 3vw, 64px));
+  margin-left:50%;
+  transform:translateX(-50%);
+}
+.panel-title{ font-size:15px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin:0 0 14px 0; font-weight:600; }
+/* Gráfico de evolución del patrimonio -- ya sin drawdown, ocupa menos alto (ver equitySvg en
+   app.js); menos padding/margen aquí para que la tarjeta en sí también se note más compacta. */
+.panel-compact{ padding:16px 22px 14px; margin-bottom:18px; }
+.panel-compact .panel-title{ margin-bottom:8px; }
+/* margin-top POSITIVO a propósito (no un hueco negativo tipo "-6px") -- así colapsa con el
+   margen inferior del título/fila que lo precede tomando el máximo de los dos (colapso de
+   márgenes verticales adyacentes en flujo de bloque) en vez de restarle -- con margin-top
+   negativo, cualquier título con margen inferior reducido (.panel-compact .panel-title,
+   .positions-head .panel-title, o un style="margin:0" inline) dejaba el hueco en casi 0 o
+   directamente en negativo (el hint montado sobre el título). Con margin-top positivo el hueco
+   nunca baja de este valor, sea cual sea el margen del elemento de arriba. */
+.hint{ font-size:14px; color:var(--text-secondary); margin:8px 0 16px 0; line-height:1.5; }
+/* Título + divisor de una subsección dentro de un panel (p.ej. "Filtros" antes de la fila de
+   filtros de "Todas las operaciones") -- más marcado que los divisores 1px ya usados entre
+   filas (.account-row, .missing-asset-item, form.entry-form), para que se note que es un
+   cambio de bloque y no solo la siguiente fila. */
+.panel-subtitle{
+  font-size:13px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary);
+  font-weight:600; margin:20px 0 12px 0; padding-top:16px;
+  border-top:1px solid var(--border);
+}
+.section-divider-strong{ padding-top:18px; border-top:1px solid var(--border); }
+.two-col{ display:grid; grid-template-columns:1.4fr 1fr; gap:24px; align-items:start; }
+@media (max-width:860px){ .two-col{ grid-template-columns:1fr; } }
+
+/* Trío de paneles de visualización de Cartera > Resumen ("Rentabilidad por bróker",
+   "Asignación por tipo de activo", "Asignación por bróker") -- mismo padding y mismo ritmo de
+   título en los tres para que se lean como un conjunto uniforme, aunque cada uno dibuje un tipo
+   de gráfico distinto (barras de bróker / barra 100% apilada x2) por debajo. Clase propia (no
+   .panel-compact, que usan otros paneles con otra intención, p.ej. "Evolución del patrimonio")
+   para no acoplar este ajuste a paneles que no son parte de este trío. */
+.panel-viz-trio{ padding:20px 22px; }
+.panel-viz-trio .panel-title{ margin-bottom:10px; }
+
+.broker-equity-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px; }
+.broker-equity-card{
+  background:var(--bg-page); border-radius:10px;
+  padding:14px 16px; display:flex; flex-direction:column; gap:8px;
+}
+.broker-equity-name{ font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); font-weight:600; }
+.broker-equity-total{ font-size:20px; font-weight:700; color:var(--text-primary); }
+.broker-equity-return{ font-size:14.5px; color:var(--text-secondary); }
+.broker-equity-spark{ width:100%; }
+.broker-equity-spark svg{ width:100%; height:auto; display:block; }
+
+.broker-equity-breakdown{ margin-top:2px; padding-top:10px; border-top:1px solid var(--border); }
+
+/* Barras 100% apiladas y de progreso-vs-máximo de Cartera > Resumen ("Rentabilidad por bróker",
+   "Asignación por tipo de activo", "Asignación por bróker") -- CSS puro en vez de SVG (ver el
+   porqué en segmentedBarHtml/subAccountBarsHtml, app.js): grosor y redondeo en px reales, así
+   que miden EXACTAMENTE lo mismo estén en la columna que estén, a diferencia de un SVG con
+   viewBox reescalado por el ancho del contenedor. .stacked-bar = barra 100% apilada (varios
+   tramos de color, un único div flex por tramo). .stacked-bar-track/-fill = barra de progreso
+   simple (un valor sobre un máximo, con el "track" restante atenuado). Incluidas aquí, junto a
+   broker-equity-breakdown, porque nacieron para esa sección aunque .stacked-bar también se use
+   en los paneles de asignación (ver donut-cartera-type/broker en index.html).
+   Redondeo de las puntas de la barra 100% apilada (.stacked-bar): overflow:hidden en el
+   contenedor recorta los divs internos (que son rectos, sin border-radius propio) a la forma
+   redondeada del contenedor -- los cortes ENTRE tramos quedan rectos, solo las dos puntas de la
+   barra entera quedan en semicírculo. */
+.stacked-bar{ display:flex; height:15px; border-radius:7.5px; overflow:hidden; }
+.stacked-bar-empty{ border:1px solid var(--border); }
+.stacked-bar-track{ height:15px; border-radius:7.5px; overflow:hidden; }
+.stacked-bar-fill{ height:100%; border-radius:7.5px; }
+
+.subaccount-bar-list{ display:flex; flex-direction:column; gap:14px; }
+.subaccount-bar-row-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; gap:10px; }
+.subaccount-bar-label{ font-size:13px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); }
+.subaccount-bar-value{ font-size:14px; font-weight:600; color:var(--text-primary); }
+.subaccount-bar-pct{ text-align:right; font-size:13px; font-weight:600; margin-top:6px; color:var(--text-secondary); }
+.subaccount-bar-pct.pos{ color:var(--accent); }
+.subaccount-bar-pct.neg{ color:var(--negative); }
+
+.broker-equity-debug{ margin-top:8px; font-size:11.5px; }
+.broker-equity-debug summary{ cursor:pointer; color:var(--text-secondary); }
+.broker-equity-debug summary:hover{ color:var(--accent); }
+.broker-equity-debug table{ width:100%; margin-top:6px; border-collapse:collapse; }
+.broker-equity-debug td{ padding:2px 0; color:var(--text-secondary); }
+.broker-equity-debug td.right{ text-align:right; color:var(--text-primary); }
+.broker-equity-debug tr:first-child td{ padding-top:6px; }
+
+/* Selector de rango temporal sobre la curva de "Evolución del patrimonio" (Cartera > Resumen)
+   -- mismo lenguaje visual de píldora que nav.tabs button, pero más pequeño/compacto por ser un
+   control secundario dentro de un panel en vez de la navegación principal. */
+.range-toggle{ display:inline-flex; gap:3px; background:var(--bg-page); border:1px solid var(--border); border-radius:999px; padding:3px; margin-bottom:10px; }
+.range-toggle button{
+  background:transparent; border:none; color:var(--text-secondary);
+  padding:5px 11px; border-radius:999px; font-size:13px; cursor:pointer;
+  font-family:inherit; transition:all .15s ease;
+}
+.range-toggle button.active{ background:var(--accent); color:var(--accent-contrast); font-weight:600; }
+.range-toggle button:hover:not(.active){ color:var(--text-primary); background:var(--border); }
+
+.chart-wrap svg{ width:100%; height:auto; display:block; }
+.chart-legend{ display:flex; gap:18px; font-size:14px; color:var(--text-secondary); margin-top:10px; }
+.chart-legend span{ display:inline-flex; align-items:center; gap:6px; }
+.swatch{ width:10px; height:10px; border-radius:2px; display:inline-block; }
+/* "Distribución por activo" (Cartera > Resumen) -- círculo a ancho fijo (no encoge) + leyenda
+   que sí se estira dentro de un límite razonable, en vez de quedarse a su ancho intrínseco con
+   mucho aire sobrante a la derecha del panel (el panel es tan ancho como el resto de Resumen,
+   el círculo+leyenda antes ocupaban menos de la mitad de eso). */
+.donut-row{ display:flex; gap:32px; flex-wrap:wrap; align-items:center; justify-content:center; }
+.donut-row > div:first-child{ flex:none; }
+.donut-row .donut-legend{ flex:1 1 260px; max-width:340px; }
+.donut-legend{ list-style:none; margin:12px 0 0 0; padding:0; font-size:15px; }
+.donut-legend li{ display:flex; justify-content:space-between; gap:12px; padding:4px 0; border-bottom:1px solid var(--border); }
+.donut-legend li:last-child{ border-bottom:none; }
+
+table{ width:100%; border-collapse:collapse; font-size:15px; }
+thead th{
+  text-align:left; font-weight:600; color:var(--text-secondary);
+  text-transform:uppercase; font-size:12px; letter-spacing:0.05em;
+  padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap;
+}
+/* vertical-align:top -- por defecto una celda se centra verticalmente respecto a la fila más
+   alta; con columnas de altura muy variable (p.ej. "Símbolo" en Posiciones, que puede llevar
+   varias líneas apiladas) eso deja las celdas de una sola línea (Precio actual, Fuente...)
+   flotando a media altura en vez de arrancar a la misma altura que las demás, y la fila entera
+   se ve descuadrada. Con todo anclado arriba, la fila se lee en horizontal de un vistazo aunque
+   una celda sea más alta que el resto. */
+tbody td{ padding:9px 10px; border-bottom:1px solid var(--border); white-space:nowrap; vertical-align:top; }
+tbody tr{ transition:background .12s ease; }
+tbody tr:hover{ background:rgba(var(--accent-rgb),0.05); }
+/* Rayado de cebra reutilizable en toda la app (antes escapado al id #positions-body, solo para
+   Posiciones -- migrado a clase compartida para aplicarlo igual en el resto de tablas, ver
+   index.html class="table-zebra"): filas pares en gris neutro (var(--border), el mismo tono ya
+   usado para divisores sutiles) para diferenciar de un vistazo una fila de la siguiente en una
+   tabla larga -- deliberadamente NO es un tinte del acento, para que no se confunda con el
+   resaltado al pasar el ratón por encima (ese sí en verde, más intenso). El :hover se repite
+   aquí con la misma especificidad (clase+tag+pseudo-clase) que el rayado para que gane sobre él
+   en las filas pares -- con la misma especificidad, gana la regla que aparece después.
+   Deliberadamente SIN aplicar a las tablas de vista previa de importación CSV
+   (#csv-preview-body, #household-csv-preview-body): usan tr.csv-row-autodetected para resaltar
+   en ámbar filas preseleccionadas, con MENOS especificidad que esta regla -- si cayera en fila
+   par, el rayado taparía ese aviso. */
+.table-zebra tbody tr:nth-child(even){ background:var(--border); }
+.table-zebra tbody tr:hover{ background:rgba(var(--accent-rgb),0.16); }
+/* Columna sticky (primera columna, nombre/concepto) de las 3 tablas con breakout (ver
+   .panel-table-breakout más arriba) -- solo hace falta notarla por debajo de 1240px (el
+   max-width de main; por encima de eso el breakout ya da sitio de sobra) y solo tiene efecto
+   real por encima de 780px (breakpoint de .table-cards): por debajo, esas mismas tablas ya
+   pasan a vista de tarjetas apiladas sin scroll horizontal, así que esta regla queda inerte ahí
+   sin necesidad de excluirla a propósito. El fondo de la celda sticky tiene que coincidir con
+   el de su fila (incluido el rayado de cebra y el :hover) -- si no, al desplazar lateralmente
+   se vería la celda fija con un fondo plano distinto al resto de la fila que pasa por debajo. */
+@media (max-width:1240px){
+  .table-sticky-col th:first-child, .table-sticky-col td:first-child{
+    position:sticky; left:0; z-index:2; background:var(--bg-card);
+  }
+  .table-sticky-col.table-zebra tbody tr:nth-child(even) td:first-child{ background:var(--border); }
+  .table-sticky-col.table-zebra tbody tr:hover td:first-child{ background:rgba(var(--accent-rgb),0.16); }
+
+  /* Variante de 2 columnas fijas -- la tabla de "Movimientos" (Economía > Operaciones) empieza
+     con una columna de checkbox de selección, no con el nombre/fecha (ver
+     #household-recat-body en index.html): fijar solo esa primera columna no serviría para
+     ubicar la fila al desplazar, así que aquí se fijan checkbox + Fecha juntas. El desplazamiento
+     "left" de la segunda (38px) es el ancho aproximado y estable de la celda de checkbox
+     (padding 9px 10px de tbody td + un <input type=checkbox> nativo ~16px) -- no depende del
+     contenido, a diferencia de una columna de texto, así que un valor fijo es seguro aquí. */
+  .table-sticky-col-2 th:first-child, .table-sticky-col-2 td:first-child{
+    position:sticky; left:0; z-index:3; background:var(--bg-card);
+  }
+  .table-sticky-col-2 th:nth-child(2), .table-sticky-col-2 td:nth-child(2){
+    position:sticky; left:38px; z-index:2; background:var(--bg-card);
+  }
+  .table-sticky-col-2.table-zebra tbody tr:nth-child(even) td:first-child,
+  .table-sticky-col-2.table-zebra tbody tr:nth-child(even) td:nth-child(2){ background:var(--border); }
+  .table-sticky-col-2.table-zebra tbody tr:hover td:first-child,
+  .table-sticky-col-2.table-zebra tbody tr:hover td:nth-child(2){ background:rgba(var(--accent-rgb),0.16); }
+}
+/* Fila de la vista previa de importación CSV de Economía preseleccionada como "Aportación de
+   tercero" por coincidencia con una ya registrada en la misma cuenta (ver
+   findAportacionTerceroMatch) -- mismo tinte ámbar que .panel-warnings, para que se lea como
+   "revisa esto" sin ser tan fuerte como un color de error. */
+tr.csv-row-autodetected{ background:rgba(180,140,20,0.12); }
+tr.csv-row-autodetected:hover{ background:rgba(180,140,20,0.18); }
+.csv-autodetect-badge{ font-size:11px; color:#B8860B; margin-left:6px; white-space:nowrap; }
+.table-wrap{ overflow-x:auto; }
+/* Tabla esquemática de "Posiciones" en Cartera > Resumen -- table-layout:fixed + <colgroup> con
+   ancho en px por columna (definido en index.html), en vez del table-layout automático de
+   siempre, que con solo 5 columnas en un panel ancho repartía el espacio sobrante de forma muy
+   desigual y dejaba huecos grandes entre columnas. Solo la primera columna (Activo) se deja sin
+   ancho fijo -- se lleva el resto del ancho disponible, con elipsis si el nombre no cabe. */
+.fixed-cols-table{ table-layout:fixed; }
+.fixed-cols-table td:first-child, .fixed-cols-table th:first-child{
+  overflow:hidden; text-overflow:ellipsis;
+}
+/* Cajita con scroll interno para tablas largas (p.ej. "Evolución mes a mes" con años de
+   histórico) -- solo se ven ~5 filas de golpe, el resto se desplaza dentro de la caja en vez
+   de alargar la página indefinidamente. La cabecera queda fija (sticky) mientras se hace
+   scroll, con fondo sólido para que las filas no se transparenten por debajo. */
+.scroll-box-5{ max-height:230px; overflow-y:auto; }
+.scroll-box-5 thead th{ position:sticky; top:0; background:var(--bg-card); z-index:1; }
+.right{ text-align:right; }
+th.sortable{ cursor:pointer; user-select:none; }
+th.sortable:hover{ color:var(--accent); }
+th.sortable.sort-active{ color:var(--accent); }
+.sort-indicator{ display:inline-block; width:9px; margin-left:3px; font-size:11px; }
+/* En la vista de tarjetas (móvil) el thead se oculta, así que las cabeceras dejan de ser
+   clicables -- este desplegable ofrece el mismo control de orden ahí. Oculto en escritorio,
+   donde ya se ordena pulsando las cabeceras de columna. */
+.positions-sort-mobile{ display:none; align-items:center; gap:8px; margin:-4px 0 14px 0; }
+.positions-sort-mobile label{ font-size:13px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em; flex:none; }
+.positions-sort-mobile select{
+  flex:1; background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:7px 9px; border-radius:8px; font-family:inherit; font-size:14.5px;
+}
+.icon-btn{
+  background:var(--bg-page); border:1px solid var(--border); color:var(--text-primary);
+  width:26px; height:26px; border-radius:8px; cursor:pointer; font-size:14px; transition:all .15s ease;
+}
+.icon-btn:hover{ border-color:var(--accent); color:var(--accent); background:rgba(var(--accent-rgb),0.08); }
+/* Botón hamburguesa del menú de acciones en móvil -- oculto salvo en @media (max-width:640px)
+   más abajo, así en escritorio/tablet no ocupa sitio ni se ve. */
+.mobile-menu-toggle{ display:none; }
+
+/* El icono nativo del selector de fecha (<input type="date">) lo dibuja el propio navegador en
+   negro fijo, ignorando "color" -- invisible sobre el fondo oscuro del modo oscuro. filter:invert
+   lo aclara sin tocar el resto del input. Solo Chrome/Edge/Safari exponen este pseudo-elemento
+   (Firefox dibuja su propio icono, ya con contraste suficiente en ambos temas). */
+@media (prefers-color-scheme: dark){
+  input[type=date]::-webkit-calendar-picker-indicator{ filter:invert(0.85); }
+}
+:root[data-theme="dark"] input[type=date]::-webkit-calendar-picker-indicator{ filter:invert(0.85); }
+:root[data-theme="light"] input[type=date]::-webkit-calendar-picker-indicator{ filter:none; }
+.positions-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:6px; }
+.positions-head .panel-title{ margin-bottom:0; }
+.price-input{
+  width:100px; background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:5px 7px; border-radius:8px; font-family:'IBM Plex Mono',monospace; font-size:14.5px; text-align:right;
+}
+.no-price{ color:var(--negative); font-size:12px; display:block; margin-top:2px; }
+.source-select{
+  background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:5px 6px; border-radius:8px; font-size:14px; max-width:130px;
+}
+.symbol-input{
+  width:100px; background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:5px 7px; border-radius:8px; font-family:'IBM Plex Mono',monospace; font-size:14px;
+}
+.subaccount-input{
+  width:130px; background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:5px 7px; border-radius:8px; font-size:13.5px;
+}
+.subaccount-input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--accent-rgb),0.14); }
+.recat-input{
+  width:100%; min-width:140px; background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:6px 8px; border-radius:8px; font-family:inherit; font-size:14.5px;
+}
+.recat-input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--accent-rgb),0.14); }
+.symbol-cell{ display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+.symbol-cell .symbol-input{ width:90px; }
+/* Buscador por nombre/ISIN de Posiciones -- colapsado por defecto (ver el botón "🔍" de
+   sourceWidgetHtml/symbol-panel-toggle en app.js), solo hace falta al asignar o corregir un
+   símbolo, no en el día a día -- mantenerlo siempre visible era lo que más alargaba la fila. */
+.symbol-search-panel{ margin-top:6px; padding-top:8px; border-top:1px solid var(--border); }
+.symbol-search-query{
+  width:120px; background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:5px 7px; border-radius:8px; font-size:13.5px;
+}
+.symbol-search-results{
+  display:flex; flex-direction:column; gap:3px; margin-top:6px; max-width:220px;
+  background:var(--input-bg); border:1px solid var(--border); border-radius:10px; padding:5px;
+}
+.symbol-search-results:empty{ display:none; margin-top:0; border:none; padding:0; }
+.search-result{
+  display:flex; flex-direction:column; align-items:flex-start; gap:1px; text-align:left; width:100%;
+  background:transparent; border:1px solid transparent; color:var(--text-primary);
+  padding:5px 7px; border-radius:8px; font-size:13px; cursor:pointer; white-space:normal; transition:border-color .15s;
+}
+.search-result + .search-result{ border-top:1px solid var(--border); }
+.search-result:hover{ border-color:var(--accent); background:rgba(var(--accent-rgb),0.06); }
+.search-result-meta{ color:var(--text-secondary); font-size:12px; }
+.search-hint{ font-size:13px; color:var(--text-secondary); max-width:220px; white-space:normal; margin-top:5px; }
+.price-stamp{ font-size:11.5px; color:var(--text-secondary); display:block; margin-top:2px; }
+/* Línea secundaria de rentabilidad en Posiciones -- se apila dentro de la misma celda
+   "Rentabilidad" (fusionada con Rent. €, ver renderPositions): el % va como cifra principal, el
+   importe en € como esta línea secundaria, y si la posición tiene divisa asignada, el importe en
+   su divisa nativa (ver computeNativePnl) se apila debajo como una segunda línea más. Mismo
+   lenguaje visual que .price-stamp (línea secundaria, más pequeña), pero coloreada pos/neg como
+   el resto de cifras de rentabilidad en vez de en gris neutro. */
+.pnl-sub{ font-size:11.5px; display:block; margin-top:2px; font-weight:600; }
+.pnl-sub.pos{ color:var(--accent); }
+.pnl-sub.neg{ color:var(--negative); }
+.currency-select, .fx-currency-select{
+  background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:5px 6px; border-radius:8px; font-size:13px; max-width:160px;
+}
+.fx-currency-row{ margin-bottom:4px; }
+.price-check-btn{ flex:none; }
+.price-check-result{ margin:-2px 0 4px 0; min-height:12px; }
+.price-check-result .price-stamp{ font-size:13px; color:var(--accent); margin-top:0; display:block; }
+.price-check-result .no-price{ font-size:13px; }
+
+/* Selector de mes año->mes de Economía (Resumen y Operaciones, ver renderMonthPicker en app.js)
+   -- sustituye al <select> plano de antes. Panel flotante anclado al botón, mismo lenguaje
+   visual que .symbol-search-results (fondo/borde/radio) en vez del modal a pantalla completa de
+   .flyout-panel: este control se usa constantemente, un modal sería demasiado pesado para él. */
+/* Sin width fijo por defecto -- en Resumen vive como hijo directo de .positions-head (flex, sin
+   stretch de eje principal) y debe encogerse a su contenido, igual que hacía antes el <select>
+   dentro de su .field con min-width:180px. Dentro de un .field (Operaciones, ver la regla de
+   abajo) sí debe ocupar el 100% de la celda, como cualquier .field select. */
+.month-picker{ position:relative; display:inline-block; }
+.field .month-picker{ display:block; }
+.month-picker-toggle{
+  min-width:150px; text-align:left; background:var(--input-bg); border:1px solid var(--border);
+  color:var(--text-primary); padding:8px 10px; border-radius:8px; font-family:inherit;
+  font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:space-between;
+  gap:8px; transition:border-color .15s;
+}
+.field .month-picker-toggle{ width:100%; }
+.month-picker-toggle::after{ content:"▾"; color:var(--text-secondary); font-size:12px; }
+.month-picker-toggle:hover{ border-color:var(--accent); }
+/* position:fixed (no absolute) a propósito -- .panel (el contenedor habitual de este control)
+   lleva overflow:hidden para recortar sus esquinas redondeadas, y eso recorta también a
+   cualquier descendiente position:absolute que se salga de sus bordes, aunque ese descendiente
+   no sea su containing block. position:fixed no lo sufre. Top/left se calculan en JS
+   (renderMonthPicker, al abrir) a partir de getBoundingClientRect() del botón, con el mismo
+   criterio de min-width:210px que aquí para poder clampar sin desbordar el viewport. */
+.month-picker-panel{
+  display:none; position:fixed; z-index:30;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+  padding:8px; min-width:210px; box-shadow:0 8px 24px rgba(0,0,0,0.18);
+}
+.month-picker-panel.open{ display:block; animation:fade .15s ease; }
+.month-picker-view-title{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  font-size:13px; font-weight:600; color:var(--text-secondary); padding:2px 4px 6px 4px;
+}
+.month-picker-back{
+  background:transparent; border:none; color:var(--accent); cursor:pointer;
+  font-family:inherit; font-size:13px; padding:2px 4px; border-radius:6px;
+}
+.month-picker-back:hover{ background:rgba(var(--accent-rgb),0.08); }
+.month-picker-years{ display:flex; flex-direction:column; gap:2px; max-height:240px; overflow-y:auto; }
+.month-picker-year, .month-picker-all{
+  background:transparent; border:1px solid transparent; color:var(--text-primary); text-align:left;
+  padding:7px 8px; border-radius:8px; font-family:inherit; font-size:14.5px; cursor:pointer;
+  transition:border-color .15s, background .15s;
+}
+.month-picker-year:hover, .month-picker-all:hover{ border-color:var(--accent); background:rgba(var(--accent-rgb),0.06); }
+.month-picker-year.active, .month-picker-all.active{ background:rgba(var(--accent-rgb),0.12); font-weight:600; }
+.month-picker-all{ border-bottom:1px solid var(--border); border-radius:8px 8px 0 0; margin-bottom:4px; }
+.month-picker-months{ display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
+.month-picker-month{
+  background:transparent; border:1px solid var(--border); color:var(--text-primary);
+  padding:8px 4px; border-radius:8px; font-family:inherit; font-size:13.5px; cursor:pointer;
+  text-transform:capitalize; transition:all .15s;
+}
+.month-picker-month:hover{ border-color:var(--accent); color:var(--accent); }
+.month-picker-month.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); font-weight:600; }
+
+.csv-preview-pagination{ display:flex; align-items:center; gap:12px; margin-top:14px; }
+.csv-preview-page-info{ font-size:14px; color:var(--text-secondary); }
+
+/* Cabecera de grupo mensual ("Julio 2026") sobre la tabla de Movimientos de Economía. */
+.month-group-heading{
+  font-size:14px; font-weight:600;
+  text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary);
+  padding-bottom:8px; margin-bottom:10px; border-bottom:1px solid var(--border);
+}
+/* Misma cabecera de grupo mensual, pero como fila dentro de una tabla (ver "Todas las
+   operaciones" en Economía) en vez de un div suelto encima -- varias por tabla, una por cada
+   mes que aparezca en la página filtrada actual. */
+.month-group-heading-row td{
+  font-size:13px; font-weight:600;
+  text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary);
+  padding:16px 10px 6px 10px; border-bottom:1px solid var(--border); background:transparent;
+}
+.month-group-heading-row:first-child td{ padding-top:6px; }
+
+/* Menús modales de la pestaña Economía (Importar CSV, Cuentas, Detectar traspasos) -- botones
+   arriba a la derecha que abren un modal centrado (80% del ancho y alto de pantalla, margen del
+   10% igual en los cuatro lados -- ver "inset:10%") por encima de todo el contenido. El resto de
+   la página (header + main) se desenfoca de verdad (filter:blur, no solo un velo encima) y queda
+   fuera de alcance del ratón/teclado mientras el modal está abierto -- ver body.modal-open más
+   abajo y el atributo "inert" que le pone wireFlyout en app.js a header/main. Los tres paneles
+   viven fuera de <main> (al final de <body>, ver index.html) precisamente para que ese filtro no
+   les afecte también a ellos. Clases genéricas (.flyout*) porque hay tres instancias con el mismo
+   comportamiento -- ver wireFlyout/closeAllFlyouts en app.js. */
+.flyout-bar{ display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+.flyout{ position:relative; }
+body.modal-open{ overflow:hidden; }
+body.modal-open > header, body.modal-open > main{
+  filter:blur(5px); transition:filter .15s ease; pointer-events:none;
+}
+.modal-backdrop{
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:39;
+}
+.modal-backdrop.open{ display:block; animation:fade .15s ease; }
+.flyout-panel{
+  display:none; position:fixed; inset:10%; overflow-y:auto; z-index:40;
+  margin:0; box-shadow:0 12px 32px rgba(0,0,0,0.25); border-radius:var(--radius);
+  background:var(--bg-card);
+}
+.flyout-panel.open{ display:block; animation:fade .15s ease; }
+
+/* Variante del flyout-panel de arriba para el menú de acciones secundarias en móvil
+   (#mobile-menu-panel) -- misma mecánica (backdrop, inert, Escape, closeAllFlyouts ya lo
+   detecta por seguir llevando también la clase .flyout-panel), pero panel lateral deslizante
+   desde la derecha en vez de modal centrado: más natural para una lista corta de botones tipo
+   "menú", y dejar sitio para los mismos gestos (deslizar) que un cajón de navegación habitual.
+   Los botones dentro son ancho completo, alineados a la izquierda (en vez del .btn de tamaño
+   ajustado al texto que usan en el header). */
+.drawer-panel{
+  /* OJO: nada de "display" aquí -- .flyout-panel{display:none} y .drawer-panel comparten la
+     misma especificidad (una clase), así que un display:flex en la regla base (fuera de
+     .open) ganaría por orden de aparición y dejaría el panel visible incluso cerrado. El
+     display:flex real vive en la regla .drawer-panel.open de abajo, con la misma
+     especificidad que .flyout-panel.open (dos clases) pero después en la hoja -- gana ella. */
+  inset:0 0 0 auto; width:min(80vw, 300px); border-radius:0;
+  flex-direction:column; gap:10px; padding:22px;
+  transform:translateX(100%); transition:transform .2s ease;
+}
+.drawer-panel.open{ display:flex; animation:none; transform:translateX(0); }
+.drawer-panel .btn{ width:100%; text-align:left; }
+
+/* Fila de una cuenta en el flyout "Cuentas" -- nombre + % editables inline, botón eliminar. */
+.account-row{ display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--border); }
+.account-row:first-child{ border-top:none; }
+.account-row input[type=text]{ flex:1; min-width:0; }
+.account-row input[type=number]{ width:70px; flex:none; }
+
+/* Tooltip flotante de los gráficos de barras mensuales (Evolución mes a mes / Evolución de
+   gastos por mes) -- un único div reutilizado, ver wireChartTooltips() en app.js.
+   pointer-events:none para que nunca se interponga entre el ratón y la región de hover del
+   propio SVG que lo mantiene visible. */
+.chart-tooltip{
+  display:none; position:fixed; z-index:100; pointer-events:none;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+  padding:8px 11px; font-size:13.5px; white-space:nowrap; box-shadow:0 10px 28px rgba(0,0,0,0.18);
+}
+.chart-tooltip-title{ color:var(--text-primary); font-weight:600; margin-bottom:4px; }
+.chart-tooltip-row{ color:var(--text-secondary); }
+.chart-hit{ cursor:default; }
+
+/* Lista de activos sin fuente en el aviso de Histórico -- incluye posiciones ya vendidas del
+   todo, que no tienen fila en Posiciones donde asignarles una fuente, así que el mismo widget
+   de Fuente+Símbolo se ofrece aquí mismo en vez de solo mandar al usuario a otra pestaña. */
+.missing-asset-list{ list-style:none; margin:10px 0 0 0; padding:0; }
+.missing-asset-item{ padding:10px 0; border-top:1px solid var(--border); }
+.missing-asset-item:first-child{ border-top:none; }
+.missing-asset-label{ margin-bottom:8px; }
+.missing-asset-widget{ display:flex; align-items:flex-start; flex-wrap:wrap; gap:8px; }
+.missing-asset-widget .symbol-cell{ margin-bottom:0; }
+
+form.entry-form{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px;
+  margin-top:18px; padding-top:18px; border-top:1px solid var(--border);
+}
+.field label{ display:block; font-size:13px; color:var(--text-secondary); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.04em; }
+.field input, .field select{
+  width:100%; background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:8px 10px; border-radius:8px; font-family:inherit; font-size:15px; transition:border-color .15s, box-shadow .15s;
+}
+.field input:focus, .field select:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--accent-rgb),0.14); }
+.form-submit{ display:flex; align-items:end; }
+.form-submit .btn{ width:100%; }
+
+.empty-state{ padding:40px 20px; text-align:center; color:var(--text-secondary); }
+.empty-state strong{ color:var(--text-primary); display:block; margin-bottom:6px; font-size:17px; }
+
+.privacy-note{
+  font-size:14px; color:var(--text-secondary); border-left:2px solid var(--accent); padding:10px 14px;
+  background:rgba(var(--accent-rgb),0.06); border-radius:0 8px 8px 0; margin-bottom:24px; line-height:1.5;
+}
+.privacy-note b{ color:var(--text-primary); }
+
+.import-step{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:6px; }
+/* Fila de filtros con etiquetas de longitud muy distinta (p.ej. "Tipo" junto a "Buscar en
+   descripción") -- sin esto, la etiqueta que ocupa dos líneas empuja su select/input hacia
+   abajo mientras las etiquetas de una sola línea dejan el suyo más arriba, y la fila de
+   controles queda escalonada en vez de alineada. Reserva la misma altura (2 líneas) para
+   todas las etiquetas de esta fila y ancla el texto abajo, así el control de debajo arranca
+   siempre a la misma altura tenga la etiqueta un renglón o dos. */
+.filter-row-aligned .field label{
+  min-height:2.4em; line-height:1.2; display:flex; align-items:flex-end;
+}
+.file-picker-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.file-picker-row .btn{ flex:none; }
+.file-picker-name{ font-size:14px; color:var(--text-secondary); }
+.mapping-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; }
+.mapping-grid .field select{ font-size:14.5px; }
+.mapping-grid .field label small{ text-transform:none; color:var(--negative); font-weight:600; }
+
+tbody select.type-select{
+  background:var(--input-bg); border:1px solid var(--border); color:var(--text-primary);
+  padding:4px 6px; border-radius:8px; font-size:14px;
+  /* Bloque en vez de inline -- en Posiciones va apilado con el input de Sub-cuenta justo debajo
+     dentro de la misma celda "Tipo / Sub-cuenta" (ver renderPositions), y sin esto ambos
+     controles quedarían pegados uno al lado del otro en la misma línea. */
+  display:block; margin-bottom:4px;
+}
+
+footer{ text-align:center; color:var(--text-secondary); font-size:13px; padding:20px; }
+
+@media (max-width:640px){
+  header{ padding:14px; }
+  main{ padding:16px; }
+  /* Los 4 botones de acciones (modo oscuro/ocultar cifras/backup/restaurar) ocupaban demasiado
+     sitio en la cabecera de un móvil -- se ocultan aquí y se accede a ellos (duplicados propios,
+     ver #mobile-menu-panel en index.html) desde el botón hamburguesa. */
+  .header-actions{ display:none; }
+  .mobile-menu-toggle{ display:inline-flex; align-items:center; justify-content:center; }
+  header{ flex-wrap:nowrap; gap:10px; }
+  .brand{ flex:none; min-width:0; }
+  /* La descripción larga junto al logo no cabe con holgura junto a la nav + hamburguesa en un
+     móvil estrecho -- el logo+título solos ya identifican la app de sobra aquí. */
+  .brand small{ display:none; }
+
+  /* Subpestañas (toplevel Y subtabs, misma clase nav.tabs) -- de píldora rellena a subrayado
+     plano en fila con scroll horizontal si no caben todas. Pensado para funcionar apiladas en
+     los dos niveles a la vez (toplevel en la cabecera, subtabs dentro de <main>): cada nav.tabs
+     es su propia franja independiente con su propio scroll, así que no importa cuántas haya
+     apiladas verticalmente. Sin fondo/borde redondeado (a diferencia del escritorio); el activo
+     se marca con un trazo de 2px en el acento bajo su propio texto, no toda la franja, y la
+     franja entera lleva un borde inferior para leerse como una barra de pestañas real. */
+  nav.tabs{
+    background:none; border:none; border-radius:0; padding:0; gap:0;
+    flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden;
+    border-bottom:1px solid var(--border);
+  }
+  nav.tabs.toplevel{ flex:1 1 auto; min-width:0; }
+  nav.tabs button{
+    border-radius:0; padding:10px 12px; white-space:nowrap; flex:none;
+    border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  nav.tabs button.active{
+    background:none; color:var(--text-primary); border-bottom-color:var(--accent);
+  }
+  nav.tabs button:hover:not(.active){ background:none; }
+}
+
+/* Tablas anchas (Posiciones, Operaciones, Valoraciones) no caben en móvil aunque la
+   sección ocupe todo el viewport -- por debajo de 780px cada fila con clase .table-cards
+   se convierte en una tarjeta vertical (una etiqueta + valor por línea) en vez de forzar
+   scroll horizontal. Requiere que cada <td> lleve data-label="..." (el texto de su <th>). */
+@media (max-width:780px){
+  .positions-sort-mobile{ display:flex; }
+  .table-cards{ overflow-x:visible; }
+  .table-cards table, .table-cards tbody{ display:block; width:100%; }
+  .table-cards thead{ display:none; }
+  .table-cards tr{
+    display:block; background:var(--bg-card);
+    border-radius:10px; padding:4px 12px; margin-bottom:12px;
+  }
+  /* .table-zebra (rayado de filas pares) queda inerte aquí a propósito -- en vista de tarjetas
+     cada fila ya es su propia tarjeta separada por margen, no una fila continua que necesite
+     rayado para distinguirse de la siguiente; sin este reset, el fondo gris de las filas pares
+     (var(--border), muy parecido al fondo de página) hacía que esas tarjetas de número par
+     parecieran fundirse con el fondo en vez de leerse como tarjetas iguales a las demás.
+     Misma especificidad que la regla de rayado (clase+2 tags+pseudo-clase) para poder ganarle
+     -- aparece después en la hoja, así que gana con la misma especificidad. */
+  .table-cards tbody tr:nth-child(even){ background:var(--bg-card); }
+  .table-cards td{
+    display:flex; align-items:flex-start; justify-content:space-between; gap:14px;
+    text-align:right; white-space:normal; border-bottom:1px solid var(--border);
+    padding:9px 0;
+  }
+  .table-cards td:last-child{ border-bottom:none; }
+  .table-cards td::before{
+    content:attr(data-label); flex:none; text-align:left; color:var(--text-secondary);
+    font-size:12px; text-transform:uppercase; letter-spacing:0.04em; font-weight:600;
+    padding-top:2px;
+  }
+  .table-cards td.table-cards-action{ justify-content:flex-end; padding-top:6px; }
+  .table-cards td.table-cards-action::before{ content:none; }
+  .table-cards td.symbol-td{ flex-direction:column; align-items:stretch; text-align:left; }
+  .table-cards td.symbol-td::before{ padding-top:0; margin-bottom:6px; }
+  .table-cards .symbol-cell{ flex-wrap:wrap; }
+  .table-cards .symbol-search-results{ max-width:none; }
+}
